@@ -26,5 +26,4 @@ build
 *.bin
 *.ipch
 .DS_Store
-./hex/
-./obj/
+

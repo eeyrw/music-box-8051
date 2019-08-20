@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "stm8s.h": "c",
+        "wavetable_celesta_c5.h": "c"
+    }
+}

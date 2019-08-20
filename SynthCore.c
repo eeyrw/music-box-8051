@@ -18,6 +18,20 @@ void SynthInit(Synthesizer* synth)
 	}
     synth->lastSoundUnit=0;
 }
+
+
+void NoteOnAsm(Synthesizer* synth,uint8_t note)
+{
+
+}
+void GenDecayEnvlopeAsm(Synthesizer* synth)
+{
+	
+}
+void SynthAsm(Synthesizer* synth)
+{
+	
+}
 #ifdef RUN_TEST
 void NoteOnC(Synthesizer* synth,uint8_t note)
 {

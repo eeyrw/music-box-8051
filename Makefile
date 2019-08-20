@@ -45,8 +45,8 @@ OBJ = $(addprefix $(OBJDIR)/, $(C_OBJ_FILE))
 MODEL  = small
 # ------------------------------------------------------
 # Memory Layout
-# PRG Size = 4K Bytes
-CODE_SIZE = --code-loc 0x0000 --code-size 4096
+# PRG Size = 32K Bytes
+CODE_SIZE = --code-loc 0x0000 --code-size 32768
 # INT-MEM Size = 256 Bytes
 IRAM_SIZE = --idata-loc 0x0000  --iram-size 256
 # EXT-MEM Size = 4K Bytes

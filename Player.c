@@ -63,3 +63,16 @@ void PlayerInit(Player *player)
     player->scorePointer = Score;
     SynthInit(&(player->mainSynthesizer));
 }
+
+void UpdateTick(Player* player)
+{
+
+}
+uint8_t PlayNoteTimingCheck(Player* player)
+{
+    
+}
+void PlayUpdateNextScoreTick(Player* player)
+{
+    
+}

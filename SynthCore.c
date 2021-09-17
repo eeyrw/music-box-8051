@@ -2,7 +2,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "WaveTable_Celesta_C5.h"
-
+#include "EnvelopeTable.h"
+#define RUN_TEST
 
 void SynthInit(Synthesizer* synth)
 {
@@ -37,13 +38,13 @@ void NoteOnC(Synthesizer* synth,uint8_t note)
 {
 	uint8_t lastSoundUnit = synth->lastSoundUnit;
 
-	disable_interrupts();
-	synth->SoundUnitUnionList[lastSoundUnit].combine.increment = PitchIncrementTable[note&0x7F];
+	// disable_interrupts();
+	synth->SoundUnitUnionList[lastSoundUnit].combine.increment = WaveTable_Celesta_C5_Increment[note&0x7F];
 	synth->SoundUnitUnionList[lastSoundUnit].combine.wavetablePos_frac = 0;
 	synth->SoundUnitUnionList[lastSoundUnit].combine.wavetablePos_int = 0;
 	synth->SoundUnitUnionList[lastSoundUnit].combine.envelopePos = 0;
 	synth->SoundUnitUnionList[lastSoundUnit].combine.envelopeLevel = 255;
-	enable_interrupts();
+	// enable_interrupts();
 
 	lastSoundUnit++;
 

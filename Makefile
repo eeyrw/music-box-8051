@@ -1,40 +1,15 @@
-#
-# SDCC Makefile for mcs51
-#
-# ------------------------------------------------------
-# PATH
+# toolchain
+CC           = sdcc
+CP           = sdobjcopy
+AS           = sdas8051
+LD			= sdld
+HEX          = packihx
+BIN          = $(CP) -O binary -S
 
-INCDIR  = .
-SRCDIR  =.
-OBJDIR  = ./obj
-HEXDIR = ./hex
-
-LIBDIR  =  
-# ------------------------------------------------------
-# Target and Source
-TARGET = $(HEXDIR)/music-box-8051
-
-#C_SRC = $(SRCDIR)/helloworld.c
-#C_SRC = $(wildcard  $(SRCDIR)/*.c)
-C_SRC 	+= $(SRCDIR)/main.c
-C_SRC 	+= $(SRCDIR)/AlgorithmTest.c
-C_SRC 	+= $(SRCDIR)/SynthCore.c
-C_SRC 	+= $(SRCDIR)/Player.c
-C_SRC 	+= $(SRCDIR)/UartRedirect.c
-C_SRC 	+= $(SRCDIR)/WaveTable_Celesta_C5.c
-C_SRC 	+= $(SRCDIR)/EnvelopTable.c
-C_SRC 	+= $(SRCDIR)/score.c
-
-ASM_SRC = 
-
-# ASM_SRC   += PlayerUtil.s
-# ASM_SRC   += Synth.s
-
-C_SRC_FILE = $(notdir $(C_SRC))
-C_OBJ_FILE = $(C_SRC_FILE:%.c=%.c.rel)
-
-#OBJ = $(OBJDIR)/helloworld.c.rel      
-OBJ = $(addprefix $(OBJDIR)/, $(C_OBJ_FILE)) 
+# define mcu, specify the target processor
+F_CPU   ?= 16000000
+MCU          = mcs51
+ARCH = mcs51
 
 # ------------------------------------------------------
 # Usually SDCC's small memory model is the best choice.  If
@@ -52,47 +27,114 @@ IRAM_SIZE = --idata-loc 0x0000  --iram-size 256
 # EXT-MEM Size = 4K Bytes
 XRAM_SIZE = --xram-loc 0x0000 --xram-size 4096
 
+# all the files will be generated with this name (main.elf, main.bin, main.hex, etc)
+PROJECT_NAME=music-box-8051
+
+# specify define
+DDEFS       =
+
+# define root dir
+ROOT_DIR     = .
+
+# define include dir
+INCLUDE_DIRS = 
+
+# define stm32f4 lib dir
+LIBDIR   = $(ROOT_DIR)/stm8
+
+# user specific
+
+SRC 	+= main.c
+SRC 	+= AlgorithmTest.c
+SRC 	+= SynthCore.c
+SRC 	+= Player.c
+SRC 	+= UartRedirect.c
+SRC 	+= WaveTable_Celesta_C5.c
+SRC 	+= EnvelopTable.c
+SRC 	+= score.c
+
+ASM_SRC =
+# ASM_SRC   += PeriodTimer.s
+# ASM_SRC   += PlayerUtil.s
+# ASM_SRC   += SynthCoreAsm.s
 
 
-# ------------------------------------------------------
-# SDCC
+INC_DIR  = $(patsubst %, -I%, $(INCLUDE_DIRS))
 
-CC = sdcc
-AS = sdas8051
-
-MCU_MODEL = mcs51
-
-#LIBS    = 
-#LIBPATH = -L $(LIBDIR)
-
-#DEBUG = --debug
-AFLAGS = -l -s
-CFLAGS = -I./inc -I$(INCDIR) -m$(MCU_MODEL) --model-$(MODEL) --out-fmt-ihx --no-xinit-opt $(DEBUG)
-LFLAGS = $(LIBPATH) $(LIBS) -m$(MCU_MODEL) --model-$(MODEL) $(CODE_SIZE) $(IRAM_SIZE) $(XRAM_SIZE) --out-fmt-ihx  $(DEBUG)
-
-# ------------------------------------------------------
-# S = @
-
-.PHONY: all clean
-
-all: $(TARGET).hex
+# run from Flash
+DEFS	 = $(DDEFS)
+DEPS  = $(SRC:.c=.d)
+OBJECTS  = $(SRC:.c=.rel) $(ASM_SRC:.s=.rel)
+OTHER_OUTPUTS += $(ASM_SRC:.s=.asm) $(SRC:.c=.asm)
+OTHER_OUTPUTS += $(ASM_SRC:.s=.lst) $(SRC:.c=.lst)
+OTHER_OUTPUTS += $(ASM_SRC:.s=.rst) $(SRC:.c=.rst)
+OTHER_OUTPUTS += $(ASM_SRC:.s=.sym) $(SRC:.c=.sym)
 
 
-$(HEXDIR)/%.hex: $(OBJDIR)/%.ihx
-	$(S) packihx $^ > $@
+CFLAGS  = -m$(ARCH) -p$(MCU) --model-$(MODEL) --std-sdcc11
+CFLAGS += -DF_CPU=$(F_CPU)UL -I. -I$(LIBDIR) 
+ASFLAGS  = -plosgff -l -s
+LD_FLAGS = -m$(ARCH) -l$(ARCH) --out-fmt-ihx -m$(MCU_MODEL) --model-$(MODEL) $(CODE_SIZE) $(IRAM_SIZE) $(XRAM_SIZE)
 
-$(OBJDIR)/%.ihx: $(OBJ)
-	$(S) $(CC) -o $@ $(LFLAGS) $^
+#
+# makefile rules
+#
+all: $(OBJECTS) $(PROJECT_NAME).ihx $(PROJECT_NAME).hex $(PROJECT_NAME).bin
 
-$(OBJDIR)/%.c.rel: $(SRCDIR)/%.c
-	$(S) $(CC) -o $@ $(CFLAGS) -c $^
+# Don't delete dependency files
+.PRECIOUS: %.d
 
-$(OBJDIR)/%.asm.rel: $(SRCDIR)/%.asm
-	$(S) $(AS) $(AFLAGS) -o $@ $^ 
+# Don't rebuild deps if cleaning
+ifneq ($(MAKECMDGOALS),clean)
+-include $(DEPS)
+# Beacuse SDCC's assembler has no way to auto output dependency info,
+# the dependency is manually written here.	
+# PeriodTimer.rel: SynthCore.inc STM8.inc Synth.inc UpdateTick.inc
+# SynthCoreAsm.rel: SynthCore.inc
+# PlayerUtil.rel: SynthCore.inc Player.inc
+endif
 
-flash: $(TARGET)
-	#./stm8flash -c stlinkv2 -p $(MCU) -w $(TARGET)
 
+
+
+%.rel: %.c Makefile
+	@echo [CC] $(notdir $<)
+# Output dependency
+	@$(CC) $(CFLAGS) $(INC_DIR) -MM -c $< > $(patsubst %.c,%.d,$<)
+# Do compiling
+	@$(CC) $(CFLAGS) $(INC_DIR) -c $< -o $@
+	
+
+
+%.rel: %.s
+	@echo [AS] $(notdir $<)
+	@$(AS) $(ASFLAGS) $<
+
+%.ihx: $(OBJECTS)
+	@echo [LD] $(PROJECT_NAME).ihx
+	@$(CC) $(LD_FLAGS) $(OBJECTS) -o $@
+	
+%.hex: %.ihx
+	@echo [HEX] $(PROJECT_NAME).hex
+	@$(HEX) $< > $@	
+	
+%.bin: %.ihx
+	@echo [BIN] $(PROJECT_NAME).bin
+	@$(CP) -I ihex -O binary $< $@
+
+flash: $(PROJECT_NAME).hex
+	stm8flash -c stlinkv2 -p $(MCU) -w $(PROJECT_NAME).hex
+	
 clean:
-	$(S) rm -rf $(OBJDIR)/*
-	$(S) rm -rf $(TARGET).hex
+	@echo [RM] OBJ
+	@-rm -rf $(OBJECTS)
+	@echo [RM] HEX
+	@-rm -rf $(PROJECT_NAME).ihx
+	@echo [RM] Intermediate outputs
+	@-rm -rf $(OTHER_OUTPUTS)
+	@-rm -rf $(PROJECT_NAME).lk
+	@-rm -rf $(PROJECT_NAME).map	
+	@-rm -rf $(PROJECT_NAME).cdb	
+	@-rm -rf $(PROJECT_NAME).hex
+	@-rm -rf $(PROJECT_NAME).bin
+	@-rm -rf $(DEPS)

@@ -10,7 +10,7 @@
 
 extern void TestProcess(void);
 
-Player mainPlayer;
+__data Player mainPlayer;
 
 // void timer_isr() __interrupt(TIM4_ISR)
 // {

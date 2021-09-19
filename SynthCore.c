@@ -29,10 +29,7 @@ void GenDecayEnvlopeAsm(Synthesizer* synth)
 {
 	
 }
-void SynthAsm(Synthesizer* synth)
-{
-	
-}
+
 #ifdef RUN_TEST
 void NoteOnC(Synthesizer* synth,uint8_t note)
 {

@@ -25,6 +25,8 @@ __data Player mainPlayer;
 // 	NoteOnAsm(&(mainPlayer.mainSynthesizer),UART1_DR&0b00111111);
 // }
 
+extern void timer_isr() __interrupt(2) __using(1);
+
 void HardwareInit(void)
 {
 	// CLK_CKDIVR = 0x00;
@@ -92,6 +94,7 @@ void main()
 
 	while (1)
 	{
+		SynthAsm(&mainPlayer.mainSynthesizer);
 		PlayerProcess(&mainPlayer);
 	}
 }

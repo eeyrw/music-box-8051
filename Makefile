@@ -54,9 +54,9 @@ SRC 	+= EnvelopTable.c
 SRC 	+= score.c
 
 ASM_SRC =
-# ASM_SRC   += PeriodTimer.s
+ASM_SRC   += PeriodTimer.s
 # ASM_SRC   += PlayerUtil.s
-# ASM_SRC   += SynthCoreAsm.s
+ASM_SRC   += Synth.s
 
 
 INC_DIR  = $(patsubst %, -I%, $(INCLUDE_DIRS))

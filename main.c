@@ -10,7 +10,7 @@
 
 extern void TestProcess(void);
 
-__data Player mainPlayer;
+__data __at (0x10) Player mainPlayer;
 
 // void timer_isr() __interrupt(TIM4_ISR)
 // {
@@ -26,7 +26,6 @@ __data Player mainPlayer;
 // }
 
 extern void timer_isr() __interrupt(2) __using(1);
-
 void HardwareInit(void)
 {
 	// CLK_CKDIVR = 0x00;

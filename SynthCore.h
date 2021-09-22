@@ -2,8 +2,11 @@
 #define __SYNTH_CORE_H__
 
 #include <stdint.h>
+#include "EnvelopeTable.h"
 
 #define POLY_NUM 5
+#define DECAY_TIME_FACTOR 150
+
 
 typedef struct _SoundUnit
 {
@@ -44,17 +47,26 @@ typedef struct _Synthesizer
 }Synthesizer;
 
 
-extern void SynthInit(Synthesizer* synth);
+
+extern void SynthInit(Synthesizer *synth);
 
 #ifdef RUN_TEST
-extern void NoteOnC(Synthesizer* synth,uint8_t note);
-extern void SynthC(Synthesizer* synth);
-extern void GenDecayEnvlopeC(Synthesizer* synth);
+extern void NoteOnC(uint8_t note);
+extern void SynthC(void);
+extern void GenDecayEnvlopeC(void);
 #endif
 
-extern void NoteOnAsm(Synthesizer* synth,uint8_t note);
-extern void GenDecayEnvlopeAsm(Synthesizer* synth);
-extern void SynthAsm(Synthesizer* synth);
+extern void NoteOnAsm(uint8_t note);
+extern void GenDecayEnvlopeAsm(void);
+extern void SynthAsm(void);
+
+
+#ifdef RUN_TEST
+extern Synthesizer synthForC;
+#endif
+
+extern Synthesizer synthForAsm;
+
 
 
 #endif

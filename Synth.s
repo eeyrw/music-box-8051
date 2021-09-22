@@ -1,6 +1,6 @@
 .module SYNTH
 .globl _SynthAsm
-
+.include "SynthCore.inc"
 ;typedef struct _SoundUnit
 ;{
 ;	uint8_t increment_frac;
@@ -21,30 +21,6 @@
 ;    uint8_t lastSoundUnit;
 ;}Synthesizer;
 
-unitSz=10
-
-pIncrement_int=0
-pIncrement_frac=1
-pWavetablePos_frac=2
-pWavetablePos_int_h=4
-pWavetablePos_int_l=3
-pEnvelopeLevel=5
-pEnvelopePos=6
-pVal_l=7
-pVal_h=8
-pSampleVal=9
-
-pMixOut_l=unitSz*POLY_NUM
-pMixOut_h=unitSz*POLY_NUM+1
-pLastSoundUnit=unitSz*POLY_NUM+2
-
-pSynth = (0x10+0x0d)
-
-ENVELOP_LEN=256
-POLY_NUM=5
-WAVETABLE_CELESTA_C5_ATTACK_LEN=1998
-WAVETABLE_CELESTA_C5_LEN=2608
-WAVETABLE_CELESTA_C5_LOOP_LEN=(WAVETABLE_CELESTA_C5_LEN - WAVETABLE_CELESTA_C5_ATTACK_LEN)
 
 
 .area CSEG    (CODE)
@@ -58,9 +34,9 @@ _SynthAsm:
 	jz loopSynthEnd'Idx'$
 	mov dpl, (pSndUnit+pWavetablePos_int_l)
 	mov a,(pSndUnit+pWavetablePos_int_h)
-	add a,#(_WaveTable_Celesta_C5>>8)
+	add a,#(_WaveTable>>8)
 	mov dph,a
-	mov a,#(_WaveTable_Celesta_C5)
+	mov a,#(_WaveTable)
 	movc a,@a+dptr
 	mov (pSndUnit+pSampleVal),a
 
@@ -108,15 +84,15 @@ signedMulBr2End'Idx'$:
 	branch0_start'Idx'$:
 		clr cy
 		mov a,(pSndUnit+pWavetablePos_int_l)
-		subb a,#WAVETABLE_CELESTA_C5_LEN
+		subb a,#WAVETABLE_LEN
 		mov a,(pSndUnit+pWavetablePos_int_h)
-		subb a, #(WAVETABLE_CELESTA_C5_LEN>>8)
-		jc branch0_end'Idx'$			; Jump if WAVETABLE_CELESTA_C5_LEN is great than x
+		subb a, #(WAVETABLE_LEN>>8)
+		jc branch0_end'Idx'$			; Jump if WAVETABLE_LEN is great than x
 		mov a,(pSndUnit+pWavetablePos_int_l)
-		subb a,#WAVETABLE_CELESTA_C5_LOOP_LEN
+		subb a,#WAVETABLE_LOOP_LEN
 		mov (pSndUnit+pWavetablePos_int_l),a
 		mov a,(pSndUnit+pWavetablePos_int_h)
-		subb a, #(WAVETABLE_CELESTA_C5_LOOP_LEN>>8)	
+		subb a, #(WAVETABLE_LOOP_LEN>>8)	
 		mov (pSndUnit+pWavetablePos_int_h),a	
 	branch0_end'Idx'$:
 loopSynthEnd'Idx'$:
@@ -140,6 +116,7 @@ mov r4,#-255
 mov r5,#(-255>>8)
 branch_lt_gt_end$:
 
+; mixOut = mixOut>>1
 mov a,r5
 mov cy,acc.7
 rrc a

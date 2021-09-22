@@ -1,5 +1,5 @@
 ;.include "SynthCore.inc"
-;.include "STM8.inc"
+;.include "8051.inc"
 .module PERIOD_TIMER
 ; ======== Global function ========
 .globl _timer_isr
@@ -26,7 +26,7 @@ _timer_isr:
 ;	MEASURE_S;
 ;	bset	20485, #5
 ;.include "Synth.inc"
-;.include "UpdateTick.inc"
+.include "UpdateTick.inc"
 ;	MEASURE_E;
 ;	bres	20485, #5
 	pop	psw

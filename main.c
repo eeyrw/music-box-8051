@@ -9,9 +9,9 @@
 #define MEASURE_E //PB_ODR &= ~(1 << OUTPUT_PIN)
 
 extern void TestProcess(void);
+extern const unsigned char Score[];
 
-__data __at (0x10) Player mainPlayer;
-
+Player mainPlayer;
 // void timer_isr() __interrupt(TIM4_ISR)
 // {
 // 	TIM4_SR &= ~(1 << TIM4_SR_UIF);
@@ -83,17 +83,18 @@ void HardwareInit(void)
 
 void main()
 {
-	PlayerInit(&mainPlayer);
+
+	PlayerInit(&mainPlayer,&synthForAsm);
 	HardwareInit();
 #ifndef RUN_TEST
-	PlayerPlay(&mainPlayer);
+	PlayerPlay(&mainPlayer,Score);
 #else
 	TestProcess();
 #endif
 
 	while (1)
 	{
-		SynthAsm(&mainPlayer.mainSynthesizer);
 		PlayerProcess(&mainPlayer);
+		printf("sdfsf%d",mainPlayer.status);
 	}
 }

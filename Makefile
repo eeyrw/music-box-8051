@@ -17,7 +17,7 @@ ARCH = mcs51
 # variables as "xdata", or switch to largeer model
 
 # Memory Model (small, medium, large, huge)
-MODEL  = small
+MODEL  = medium
 # ------------------------------------------------------
 # Memory Layout
 # PRG Size = 32K Bytes
@@ -49,13 +49,14 @@ SRC 	+= AlgorithmTest.c
 SRC 	+= SynthCore.c
 SRC 	+= Player.c
 SRC 	+= UartRedirect.c
-SRC 	+= WaveTable_Celesta_C5.c
+SRC 	+= WaveTable.c
 SRC 	+= EnvelopTable.c
 SRC 	+= score.c
 
 ASM_SRC =
 ASM_SRC   += PeriodTimer.s
-# ASM_SRC   += PlayerUtil.s
+ASM_SRC   += PlayerUtil.s
+ASM_SRC   += SynthCoreAsm.s
 ASM_SRC   += Synth.s
 
 
@@ -89,9 +90,9 @@ ifneq ($(MAKECMDGOALS),clean)
 -include $(DEPS)
 # Beacuse SDCC's assembler has no way to auto output dependency info,
 # the dependency is manually written here.	
-# PeriodTimer.rel: SynthCore.inc STM8.inc Synth.inc UpdateTick.inc
-# SynthCoreAsm.rel: SynthCore.inc
-# PlayerUtil.rel: SynthCore.inc Player.inc
+# PeriodTimer.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
+SynthCoreAsm.rel: SynthCore.inc
+PlayerUtil.rel: SynthCore.inc Player.inc
 endif
 
 

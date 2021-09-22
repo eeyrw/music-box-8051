@@ -4,27 +4,20 @@
 #include "SynthCore.h"
 #include "Player.h"
 
-extern unsigned char Score[];
-
-void Player32kProc(Player *player)
-{
-    SynthAsm(&(player->mainSynthesizer));
-    UpdateTick(player);
-}
 
 void PlayerProcess(Player *player)
 {
 
     uint8_t temp;
-    
-    if (player->decayGenTick >= 150)
+
+    if (decayGenTick >= DECAY_TIME_FACTOR)
     {
-        GenDecayEnvlopeAsm(&(player->mainSynthesizer));
-        player->decayGenTick = 0;
+        GenDecayEnvlopeAsm();
+        decayGenTick = 0;
     }
     if (player->status == STATUS_PLAYING)
     {
-        if(PlayNoteTimingCheck(player))
+        if (PlayNoteTimingCheck(player))
         {
             do
             {
@@ -36,7 +29,7 @@ void PlayerProcess(Player *player)
                 }
                 else
                 {
-                    NoteOnAsm(&(player->mainSynthesizer), temp);
+                    NoteOnAsm(temp);
                 }
             } while ((temp & 0x80) == 0);
             PlayUpdateNextScoreTick(player);
@@ -44,35 +37,21 @@ void PlayerProcess(Player *player)
     }
 }
 
-void PlayerPlay(Player *player)
+void PlayerPlay(Player *player, uint8_t *score)
 {
-    player->currentTick = 0;
     player->lastScoreTick = 0;
-    player->decayGenTick = 0;
-    player->scorePointer = Score;
+    player->scorePointer = score;
+    currentTick = 0;
     PlayUpdateNextScoreTick(player);
     player->status = STATUS_PLAYING;
 }
 
-void PlayerInit(Player *player)
+void PlayerInit(Player *player, Synthesizer *synthesizer)
 {
     player->status = STATUS_STOP;
-    player->currentTick = 0;
     player->lastScoreTick = 0;
-    player->decayGenTick = 0;
-    player->scorePointer = Score;
-    SynthInit(&(player->mainSynthesizer));
-}
-
-void UpdateTick(Player* player)
-{
-
-}
-uint8_t PlayNoteTimingCheck(Player* player)
-{
-    
-}
-void PlayUpdateNextScoreTick(Player* player)
-{
-    
+    currentTick = 0;
+    player->scorePointer = NULL;
+    player->synthesizerPointer = synthesizer;
+    SynthInit(synthesizer);
 }

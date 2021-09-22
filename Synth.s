@@ -50,23 +50,25 @@ WAVETABLE_CELESTA_C5_LOOP_LEN=(WAVETABLE_CELESTA_C5_LEN - WAVETABLE_CELESTA_C5_A
 .area CSEG    (CODE)
 _SynthAsm:
 	; r4,r5,r6,r7 : temporary registers
+
 .irp  Idx,0,1,2,3,4
-	mov a, (pSynth+Idx*unitSz+pEnvelopeLevel)
+	pSndUnit = pSynth+Idx*unitSz
+	mov a, (pSndUnit+pEnvelopeLevel)
 	mov b,a
 	jz loopSynthEnd'Idx'$
-	mov dpl, (pSynth+Idx*unitSz+pWavetablePos_int_l)
-	mov a,(pSynth+Idx*unitSz+pWavetablePos_int_h)
+	mov dpl, (pSndUnit+pWavetablePos_int_l)
+	mov a,(pSndUnit+pWavetablePos_int_h)
 	add a,#(_WaveTable_Celesta_C5>>8)
 	mov dph,a
 	mov a,#(_WaveTable_Celesta_C5)
 	movc a,@a+dptr
-	mov (pSynth+Idx*unitSz+pSampleVal),a
+	mov (pSndUnit+pSampleVal),a
 
 	jnb a.7,signedMulBr1'Idx'$	; Do signed mutiple with unsigned MUL
 	mul ab
 
-	mov (pSynth+Idx*unitSz+pVal_l),a
-	mov (pSynth+Idx*unitSz+pVal_h),b
+	mov (pSndUnit+pVal_l),a
+	mov (pSndUnit+pVal_h),b
 
 	mov a,b			; Div with 0xFF
 	clr b
@@ -77,8 +79,8 @@ signedMulBr1'Idx'$:
 		inc a
 		mul ab				; Mutiple envelopeLevel with sample
 
-		mov (pSynth+Idx*unitSz+pVal_l),a
-		mov (pSynth+Idx*unitSz+pVal_h),b
+		mov (pSndUnit+pVal_l),a
+		mov (pSndUnit+pVal_h),b
 
 		mov a,b				; Div with 0xFF
 		mov b,#0xFF
@@ -91,31 +93,31 @@ signedMulBr2End'Idx'$:
 		addc a,(pSynth+pMixOut_h)
 		mov (pSynth+pMixOut_h),a
 
-		mov a,(pSynth+Idx*unitSz+pIncrement_frac)
-		addc a,(pSynth+Idx*unitSz+pWavetablePos_frac)
-		mov (pSynth+Idx*unitSz+pWavetablePos_frac),a
+		mov a,(pSndUnit+pIncrement_frac)
+		addc a,(pSndUnit+pWavetablePos_frac)
+		mov (pSndUnit+pWavetablePos_frac),a
 
-		mov a,(pSynth+Idx*unitSz+pIncrement_int)
-		addc a,(pSynth+Idx*unitSz+pWavetablePos_int_l)
-		mov (pSynth+Idx*unitSz+pWavetablePos_int_l),a
+		mov a,(pSndUnit+pIncrement_int)
+		addc a,(pSndUnit+pWavetablePos_int_l)
+		mov (pSndUnit+pWavetablePos_int_l),a
 
 		mov a,#0
-		addc a,(pSynth+Idx*unitSz+pWavetablePos_int_h)
-		mov (pSynth+Idx*unitSz+pWavetablePos_int_h),a
+		addc a,(pSndUnit+pWavetablePos_int_h)
+		mov (pSndUnit+pWavetablePos_int_h),a
 
 	branch0_start'Idx'$:
 		clr cy
-		mov a,(pSynth+Idx*unitSz+pWavetablePos_int_l)
+		mov a,(pSndUnit+pWavetablePos_int_l)
 		subb a,#WAVETABLE_CELESTA_C5_LEN
-		mov a,(pSynth+Idx*unitSz+pWavetablePos_int_h)
+		mov a,(pSndUnit+pWavetablePos_int_h)
 		subb a, #(WAVETABLE_CELESTA_C5_LEN>>8)
 		jc branch0_end'Idx'$			; Jump if WAVETABLE_CELESTA_C5_LEN is great than x
-		mov a,(pSynth+Idx*unitSz+pWavetablePos_int_l)
+		mov a,(pSndUnit+pWavetablePos_int_l)
 		subb a,#WAVETABLE_CELESTA_C5_LOOP_LEN
-		mov (pSynth+Idx*unitSz+pWavetablePos_int_l),a
-		mov a,(pSynth+Idx*unitSz+pWavetablePos_int_h)
+		mov (pSndUnit+pWavetablePos_int_l),a
+		mov a,(pSndUnit+pWavetablePos_int_h)
 		subb a, #(WAVETABLE_CELESTA_C5_LOOP_LEN>>8)	
-		mov (pSynth+Idx*unitSz+pWavetablePos_int_h),a	
+		mov (pSndUnit+pWavetablePos_int_h),a	
 	branch0_end'Idx'$:
 loopSynthEnd'Idx'$:
 .endm 

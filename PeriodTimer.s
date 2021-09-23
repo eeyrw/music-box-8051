@@ -21,14 +21,10 @@ _timer_isr:
 	push	dph
 	push	psw
 	mov	psw,#0x08
-;	TIM4_SR &= ~(1 << TIM4_SR_UIF);
-;	bres	21316, #0
-;	MEASURE_S;
-;	bset	20485, #5
+	setb p1.2
 ;.include "Synth.inc"
 .include "UpdateTick.inc"
-;	MEASURE_E;
-;	bres	20485, #5
+	clr p1.2
 	pop	psw
 	pop	dph
 	pop	dpl

@@ -57,6 +57,7 @@ ASM_SRC =
 ASM_SRC   += PeriodTimer.s
 ASM_SRC   += PlayerUtil.s
 ASM_SRC   += SynthCoreAsm.s
+ASM_SRC   += AbsoluteMem.s
 
 ASM_SRC   += Synth_testbench.s
 ASM_SRC   += UpdateTick_testbench.s

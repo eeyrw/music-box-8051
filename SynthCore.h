@@ -59,6 +59,6 @@ extern void SynthAsm(void);
 extern Synthesizer synthForC;
 #endif
 
-extern Synthesizer synthForAsm;
+extern __data Synthesizer synthForAsm;
 
 #endif

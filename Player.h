@@ -26,6 +26,6 @@ extern void PlayerPlay(Player *player, uint8_t *score);
 extern uint8_t PlayNoteTimingCheck(Player *player);
 extern void PlayUpdateNextScoreTick(Player *player);
 
-extern Player mainPlayer;
+extern __data Player mainPlayer;
 
 #endif

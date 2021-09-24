@@ -6,10 +6,13 @@
 .include "SynthCore.inc"
 .include "Player.inc"
 
-
-.area DSEG    (DATA)
+.area IABS    (ABS,DATA)
+.org 0x0010
 _mainPlayer::
-    .ds PlayerTotalSize
+	.ds PlayerTotalSize
+;.area DSEG    (DATA)
+;_mainPlayer::
+;    .ds PlayerTotalSize
 .area CSEG    (CODE)
 
 _PlayNoteTimingCheck:

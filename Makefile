@@ -31,7 +31,7 @@ XRAM_SIZE = --xram-loc 0x0000 --xram-size 4096
 PROJECT_NAME=music-box-8051
 
 # specify define
-DDEFS       =
+DDEFS       = RUN_TEST
 
 # define root dir
 ROOT_DIR     = .
@@ -57,8 +57,9 @@ ASM_SRC =
 ASM_SRC   += PeriodTimer.s
 ASM_SRC   += PlayerUtil.s
 ASM_SRC   += SynthCoreAsm.s
-ASM_SRC   += Synth.s
 
+ASM_SRC   += Synth_testbench.s
+ASM_SRC   += UpdateTick_testbench.s
 
 INC_DIR  = $(patsubst %, -I%, $(INCLUDE_DIRS))
 
@@ -73,7 +74,7 @@ OTHER_OUTPUTS += $(ASM_SRC:.s=.sym) $(SRC:.c=.sym)
 
 
 CFLAGS  = -m$(ARCH) -p$(MCU) --model-$(MODEL) --std-sdcc11
-CFLAGS += -DF_CPU=$(F_CPU)UL -I. -I$(LIBDIR) 
+CFLAGS += -DF_CPU=$(F_CPU)UL -I. -I$(LIBDIR) -D$(DEFS)
 ASFLAGS  = -plosgff -l -s
 LD_FLAGS = -m$(ARCH) -l$(ARCH) --out-fmt-ihx -m$(MCU_MODEL) --model-$(MODEL) $(CODE_SIZE) $(IRAM_SIZE) $(XRAM_SIZE)
 
@@ -90,7 +91,7 @@ ifneq ($(MAKECMDGOALS),clean)
 -include $(DEPS)
 # Beacuse SDCC's assembler has no way to auto output dependency info,
 # the dependency is manually written here.	
-# PeriodTimer.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
+PeriodTimer.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
 SynthCoreAsm.rel: SynthCore.inc
 PlayerUtil.rel: SynthCore.inc Player.inc
 endif

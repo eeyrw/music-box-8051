@@ -5,10 +5,6 @@
 // Sample's base frequency: 524.9773498620826 Hz
 // Sample's sample rate: 32000 Hz
 
-#define WAVETABLE_LEN 2608
-#define WAVETABLE_ATTACK_LEN = 1507
-#define WAVETABLE_LOOP_LEN = 1101
-
 const int8_t WaveTable[2608] ={
 // Attack Samples:
      0,     0,     0,     0,     0,     0,     0,     1,     0,     0,

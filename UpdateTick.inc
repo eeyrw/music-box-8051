@@ -4,12 +4,12 @@
 
 .include "SynthCore.inc"
 
-.area DATA
+.area DSEG    (DATA)
 _decayGenTick::
 	.ds 1
 _currentTick::
 	.ds 4
-.area CODE	
+.area CSEG    (CODE)	
 _UpdateTick:
 ;     currentTick++;
 ;     if(decayGenTick<200)

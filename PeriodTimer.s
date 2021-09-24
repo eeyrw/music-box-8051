@@ -23,7 +23,7 @@ _timer_isr:
 	mov	psw,#0x08
 	setb p1.2
 ;.include "Synth.inc"
-.include "UpdateTick.inc"
+;.include "UpdateTick.inc"
 	clr p1.2
 	pop	psw
 	pop	dph

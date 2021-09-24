@@ -1,28 +1,3 @@
-.module SYNTH
-.globl _SynthAsm
-.include "SynthCore.inc"
-;typedef struct _SoundUnit
-;{
-;	uint8_t increment_frac;
-;	uint8_t increment_int;
-;	uint8_t  wavetablePos_frac;
-;	uint16_t  wavetablePos_int;
-;	uint8_t envelopeLevel;
-;	uint8_t envelopePos;
-;	int16_t val;
-;	int8_t sampleVal;
-;} SoundUnit;
-
-
-;typedef struct _Synthesizer
-;{
-;    SoundUnitUnion SoundUnitUnionList[POLY_NUM];
-;	int16_t mixOut;
-;    uint8_t lastSoundUnit;
-;}Synthesizer;
-
-
-
 .area CSEG    (CODE)
 _SynthAsm:
 	; r4,r5,r6,r7 : temporary registers

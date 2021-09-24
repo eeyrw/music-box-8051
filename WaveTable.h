@@ -6,6 +6,10 @@
 
 #include <stdint.h>
 
+#define WAVETABLE_LEN 2608
+#define WAVETABLE_ATTACK_LEN 1507
+#define WAVETABLE_LOOP_LEN 1101
+
 extern const int8_t WaveTable[];
 extern const uint16_t WaveTable_Increment[];
 

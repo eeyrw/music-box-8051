@@ -3,7 +3,7 @@
 .globl _GenDecayEnvlopeAsm
 .globl _NoteOnAsm
 
-.area CODE
+.area CSEG    (CODE)
 _GenDecayEnvlopeAsm:
 	;clr a				; Register A as loop index.
 	;ldw y,#_synthForAsm  		; Load sound unit pointer to register Y.#_synthForAsm is synthesizer object's address.

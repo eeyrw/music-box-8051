@@ -9,7 +9,7 @@
 
 .area DATA
 
-.area CODE
+.area CSEG    (CODE)
 
 _PlayNoteTimingCheck:
 ;if((currentTick>>8)>=player->lastScoreTick)

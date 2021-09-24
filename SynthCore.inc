@@ -14,7 +14,7 @@
 ;typedef struct _Synthesizer
 ;{
 ;    SoundUnitUnion SoundUnitUnionList[POLY_NUM];
-;	int16_t mixOut;
+;	 int16_t mixOut;
 ;    uint8_t lastSoundUnit;
 ;}Synthesizer;
 
@@ -35,7 +35,7 @@ pMixOut_l=unitSz*POLY_NUM
 pMixOut_h=unitSz*POLY_NUM+1
 pLastSoundUnit=unitSz*POLY_NUM+2
 
-pSynth=0x10+0x0d
+;pSynth=0x10+0x0d
 
 ENVELOP_LEN=256
 POLY_NUM=5

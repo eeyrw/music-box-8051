@@ -2,9 +2,8 @@
 
 .globl _UpdateTick
 
-.include "SynthCore.inc"
 .include "Player.inc"
 
-.area CODE
+.area CSEG    (CODE)
 .include "UpdateTick.inc"
 ret

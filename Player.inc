@@ -14,5 +14,7 @@ pLastScoreTick_b2=2
 pLastScoreTick_b1=3
 pLastScoreTick_b0=4
 pScorePointer=5
-pMainSynthesizer=7
+pMainSynthesizer=8
+
+PlayerTotalSize = pMainSynthesizer+3
 

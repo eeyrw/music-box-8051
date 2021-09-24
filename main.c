@@ -18,7 +18,7 @@
 extern void TestProcess(void);
 extern const unsigned char Score[];
 
-Player mainPlayer;
+extern Player mainPlayer;
 
 extern void timer_isr() __interrupt(TIMER0_VECTOR) __using(1);
 
@@ -94,7 +94,6 @@ void main()
 #else
 	TestProcess();
 #endif
-
 	while (1)
 	{
 		PlayerProcess(&mainPlayer);

@@ -7,8 +7,9 @@
 .include "Player.inc"
 
 
-.area DATA
-
+.area DSEG    (DATA)
+_mainPlayer::
+    .ds PlayerTotalSize
 .area CSEG    (CODE)
 
 _PlayNoteTimingCheck:

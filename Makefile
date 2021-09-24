@@ -57,7 +57,6 @@ ASM_SRC =
 ASM_SRC   += PeriodTimer.s
 ASM_SRC   += PlayerUtil.s
 ASM_SRC   += SynthCoreAsm.s
-ASM_SRC   += AbsoluteMem.s
 
 ASM_SRC   += Synth_testbench.s
 ASM_SRC   += UpdateTick_testbench.s
@@ -93,6 +92,8 @@ ifneq ($(MAKECMDGOALS),clean)
 # Beacuse SDCC's assembler has no way to auto output dependency info,
 # the dependency is manually written here.	
 PeriodTimer.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
+Synth_testbench.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
+UpdateTick_testbench.rei: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
 SynthCoreAsm.rel: SynthCore.inc
 PlayerUtil.rel: SynthCore.inc Player.inc
 endif

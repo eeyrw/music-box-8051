@@ -1,7 +1,11 @@
+.globl _synthForAsm
+.area DSEG    (DATA)
+_synthForAsm::
+	.ds unitSz*POLY_NUM+3
 .area CSEG    (CODE)
 _SynthAsm:
 	; r4,r5,r6,r7 : temporary registers
-
+	pSynth = _synthForAsm
 .irp  Idx,0,1,2,3,4
 	pSndUnit = pSynth+Idx*unitSz
 	mov a, (pSndUnit+pEnvelopeLevel)

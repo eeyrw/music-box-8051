@@ -7,8 +7,6 @@
 Synthesizer synthForC;
 #endif
 
-Synthesizer synthForAsm;
-
 void SynthInit(Synthesizer *synth)
 {
 	SoundUnitUnion *soundUnionList = &(synth->SoundUnitUnionList[0]);

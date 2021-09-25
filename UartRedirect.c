@@ -7,11 +7,26 @@
  */
 int putchar(int c)
 {
-	SBUF = (uint8_t)c;
-	while (!TI)
-		;
-	TI = 0;
-	return 0;
+	if (c == '\n')
+	{
+		SBUF = '\r';
+		while (!TI)
+			;
+		TI = 0;
+		SBUF = '\n';
+		while (!TI)
+			;
+		TI = 0;
+	}
+	else
+	{
+		SBUF = c;
+		while (!TI)
+			;
+		TI = 0;
+	}
+
+	return c;
 }
 
 /*
@@ -19,8 +34,8 @@ int putchar(int c)
  */
 int getchar()
 {
-	while (!RI)
-		;
-	RI = 0;
-	return (int)SBUF;
+	//while (!RI)
+	//	;
+	//RI = 0;
+	return SBUF;
 }

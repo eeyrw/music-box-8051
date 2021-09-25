@@ -21,10 +21,10 @@ _timer_isr:
 	push	dph
 	push	psw
 	mov	psw,#0x08
-	setb p1.2
+	setb P55
 .include "Synth.inc"
 .include "UpdateTick.inc"
-	clr p1.2
+	clr P55
 	pop	psw
 	pop	dph
 	pop	dpl

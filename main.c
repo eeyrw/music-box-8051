@@ -45,8 +45,8 @@ void HardwareInit(void)
 	// if(GPIOx->Mode == GPIO_OUT_OD)		P1M1 |=  GPIOx->Pin,	P1M0 |=  GPIOx->Pin;	 //开漏输出
 	// if(GPIOx->Mode == GPIO_OUT_PP)		P1M1 &= ~GPIOx->Pin,	P1M0 |=  GPIOx->Pin;	 //推挽输出
 
-	P1M1 &= ~(1 << 2), P1M0 |= (1 << 2); // P1.2 推挽输出
-	P12 = 0;
+	P5M1 &= ~(1 << 5), P5M0 |= (5 << 5); // P5.5 推挽输出
+	P55 = 0;
 
 	S1_8bit();
 	S1_USE_P30P31(); //UART1 使用P30 P31口	默认

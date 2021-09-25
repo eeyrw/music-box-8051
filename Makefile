@@ -17,15 +17,15 @@ ARCH = mcs51
 # variables as "xdata", or switch to largeer model
 
 # Memory Model (small, medium, large, huge)
-MODEL  = medium
+MODEL  = large
 # ------------------------------------------------------
 # Memory Layout
 # PRG Size = 32K Bytes
 CODE_SIZE = --code-loc 0x0000 --code-size 32768
 # INT-MEM Size = 256 Bytes
 IRAM_SIZE = --idata-loc 0x0000  --iram-size 256
-# EXT-MEM Size = 4K Bytes
-XRAM_SIZE = --xram-loc 0x0000 --xram-size 4096
+# EXT-MEM Size = 1K Bytes
+XRAM_SIZE = --xram-loc 0x0000 --xram-size 768
 
 # all the files will be generated with this name (main.elf, main.bin, main.hex, etc)
 PROJECT_NAME=music-box-8051
@@ -74,9 +74,9 @@ OTHER_OUTPUTS += $(ASM_SRC:.s=.sym) $(SRC:.c=.sym)
 
 
 CFLAGS  = -m$(ARCH) -p$(MCU) --model-$(MODEL) --std-sdcc11
-CFLAGS += -DF_CPU=$(F_CPU)UL -I. -I$(LIBDIR) -D$(DEFS)
+CFLAGS += -DF_CPU=$(F_CPU)UL -I. -I$(LIBDIR) -D$(DEFS) --stack-auto
 ASFLAGS  = -plosgff -l -s
-LD_FLAGS = -m$(ARCH) -l$(ARCH) --out-fmt-ihx -m$(MCU_MODEL) --model-$(MODEL) $(CODE_SIZE) $(IRAM_SIZE) $(XRAM_SIZE)
+LD_FLAGS = -m$(ARCH) -l$(ARCH) --out-fmt-ihx -m$(MCU_MODEL) --model-$(MODEL) $(CODE_SIZE) $(IRAM_SIZE) $(XRAM_SIZE) --stack-auto
 
 #
 # makefile rules
@@ -93,7 +93,7 @@ ifneq ($(MAKECMDGOALS),clean)
 # the dependency is manually written here.	
 PeriodTimer.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
 Synth_testbench.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
-UpdateTick_testbench.rei: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
+UpdateTick_testbench.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
 SynthCoreAsm.rel: SynthCore.inc
 PlayerUtil.rel: SynthCore.inc Player.inc
 endif

@@ -15,19 +15,23 @@ _UpdateTick:
 ;     if(decayGenTick<200)
 ;         decayGenTick+=1;
 ; }
-    ;ldw x,_currentTick+2
-    ;addw x,#1
-    ;ldw _currentTick+2,x
-    ;ld a,_currentTick+1
-    ;adc a,#0
-    ;ld _currentTick+1,a
-    ;ld a,_currentTick+0
-    ;adc a,#0
-    ;ld _currentTick+0,a
+    mov a,_currentTick
+    add a,#1
+    mov _currentTick,a
+    mov a,(_currentTick+1)
+    addc a,#0
+    mov (_currentTick+1),a
+    mov a,(_currentTick+2)
+    addc a,#0
+    mov (_currentTick+2),a
+    mov a,(_currentTick+3)
+    addc a,#0
+    mov (_currentTick+3),a
 
-    ;ld a,_decayGenTick
-    ;cp a,#DECAY_TIME_FACTOR
-    ;jrnc updateDecayGenTickEnd$
-    ;inc _decayGenTick
+    mov a,#DECAY_TIME_FACTOR
+    clr cy
+    subb a,_decayGenTick
+    jc updateDecayGenTickEnd$
+    inc _decayGenTick
 
-;updateDecayGenTickEnd$:
+updateDecayGenTickEnd$:

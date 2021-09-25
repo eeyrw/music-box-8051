@@ -5,7 +5,7 @@
 // Sample's base frequency: 524.9773498620826 Hz
 // Sample's sample rate: 32000 Hz
 
-const int8_t WaveTable[2608] ={
+__code int8_t WaveTable[2608] ={
 // Attack Samples:
      0,     0,     0,     0,     0,     0,     0,     1,     0,     0,
      2,    -1,     1,     3,    -1,     5,     2,     0,     8,     0,
@@ -272,7 +272,7 @@ const int8_t WaveTable[2608] ={
      0,
 };
 
-const uint16_t WaveTable_Increment[] ={
+__code uint16_t WaveTable_Increment[] ={
 // Increment:
      3,     4,     4,     4,     5,     5,     5,     5,     6,     6,
      7,     7,     7,     8,     8,     9,    10,    10,    11,    11,

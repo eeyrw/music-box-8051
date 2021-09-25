@@ -10,7 +10,7 @@
 #define WAVETABLE_ATTACK_LEN 1507
 #define WAVETABLE_LOOP_LEN 1101
 
-extern const int8_t WaveTable[];
-extern const uint16_t WaveTable_Increment[];
+extern __code int8_t WaveTable[];
+extern __code uint16_t WaveTable_Increment[];
 
 #endif

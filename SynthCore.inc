@@ -1,3 +1,12 @@
+ENVELOP_LEN=256
+POLY_NUM=5
+WAVETABLE_ATTACK_LEN=1507
+WAVETABLE_LEN=2608
+WAVETABLE_LOOP_LEN=(WAVETABLE_LEN - WAVETABLE_ATTACK_LEN)
+
+DECAY_TIME_FACTOR=150
+
+
 ;typedef struct _SoundUnit
 ;{
 ;	uint8_t increment_frac;
@@ -20,8 +29,8 @@
 
 unitSz=10
 
-pIncrement_int=0
-pIncrement_frac=1
+pIncrement_int=1
+pIncrement_frac=0
 pWavetablePos_frac=2
 pWavetablePos_int_h=4
 pWavetablePos_int_l=3
@@ -35,15 +44,3 @@ pMixOut_l=unitSz*POLY_NUM
 pMixOut_h=unitSz*POLY_NUM+1
 pLastSoundUnit=unitSz*POLY_NUM+2
 
-;pSynth=0x10+0x0d
-
-ENVELOP_LEN=256
-POLY_NUM=5
-WAVETABLE_ATTACK_LEN=1507
-WAVETABLE_LEN=2608
-WAVETABLE_LOOP_LEN=(WAVETABLE_LEN - WAVETABLE_ATTACK_LEN)
-
-ENVELOP_LEN=256
-POLY_NUM=6
-
-DECAY_TIME_FACTOR=150

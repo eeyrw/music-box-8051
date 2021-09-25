@@ -1,10 +1,10 @@
 .module SYNTH_CORE_ASM
 .include "SynthCore.inc"
-.globl _GenDecayEnvlopeAsm
-.globl _NoteOnAsm
+.globl _GenDecayEnvlopeAsmP
+.globl _NoteOnAsmP
 
 .area CSEG    (CODE)
-_GenDecayEnvlopeAsm:
+_GenDecayEnvlopeAsmP:
 	;clr a				; Register A as loop index.
 	;ldw y,#_synthForAsm  		; Load sound unit pointer to register Y.#_synthForAsm is synthesizer object's address.
 ;loopGenDecayEnvlope$:
@@ -48,7 +48,7 @@ _GenDecayEnvlopeAsm:
 
 ret
 
-_NoteOnAsm:
+_NoteOnAsmP:
 	;ldw y,#_synthForAsm  		; Load sound unit pointer to register Y. #_synthForAsm is synthesizer object's address.
 	;void NoteOn(Synthesizer* synth,uint8_t note)
 	;{

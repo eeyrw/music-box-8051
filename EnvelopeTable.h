@@ -3,6 +3,6 @@
 
 #include <stdint.h>
 
-extern uint8_t EnvelopeTable[256];
+extern __code uint8_t EnvelopeTable[256];
 
 #endif

@@ -5,7 +5,7 @@
 #include "STC15F_SDCC.h"
 
 #define MAIN_Fosc 22118400L //定义主时钟
-#define BaudRate1 115200UL	//选择波特率
+#define BaudRate1 460800UL	//选择波特率
 
 #define Timer1_Reload (65536UL - (MAIN_Fosc / 4 / BaudRate1)) //Timer 1 重装值， 对应300KHZ
 #define Timer2_Reload (65536UL - (MAIN_Fosc / 4 / BaudRate1)) //Timer 2 重装值， 对应300KHZ
@@ -33,7 +33,7 @@ void UART1_int(void) __interrupt(UART1_VECTOR)
 
 	if (TI)
 	{
-		TI = 0;
+		//TI = 0;
 	}
 }
 
@@ -44,10 +44,10 @@ void HardwareInit(void)
 	// if(GPIOx->Mode == GPIO_OUT_OD)		P1M1 |=  GPIOx->Pin,	P1M0 |=  GPIOx->Pin;	 //开漏输出
 	// if(GPIOx->Mode == GPIO_OUT_PP)		P1M1 &= ~GPIOx->Pin,	P1M0 |=  GPIOx->Pin;	 //推挽输出
 
-	P1M1 &= ~(1 << 2), P1M0 |= (1 << 2); // P1.2 推挽输出
-	P12 = 0;
+	// P1M1 &= ~(1 << 2), P1M0 |= (1 << 2); // P1.2 推挽输出
+	// P12 = 0;
 
-	S1_8bit();		 //8位数据
+	S1_8bit();
 	S1_USE_P30P31(); //UART1 使用P30 P31口	默认
 					 //	S1_USE_P36P37();		//UART1 使用P36 P37口
 					 //	S1_USE_P16P17();		//UART1 使用P16 P17口
@@ -69,20 +69,20 @@ void HardwareInit(void)
 	AUXR |= (1 << 4); //Timer run enable
 	REN = 1;		  //允许接收
 
-	TR0 = 0;				   //停止计数
-	PT0 = 1;				   //高优先级中断
-	TMOD = (TMOD & ~0x03) | 0; //工作模式,0: 16位自动重装, 1: 16位定时/计数, 2: 8位自动重装, 3: 16位自动重装, 不可屏蔽中断
+	//TR0 = 0;				   //停止计数
+	//PT0 = 1;				   //高优先级中断
+	//TMOD = (TMOD & ~0x03) | 0; //工作模式,0: 16位自动重装, 1: 16位定时/计数, 2: 8位自动重装, 3: 16位自动重装, 不可屏蔽中断
 	// AUXR &= ~0x80;	//12T
-	AUXR |= 0x80;	   //1T
-	TMOD &= ~0x04;	   //定时
-	INT_CLKO &= ~0x01; //不输出时钟
+	//AUXR |= 0x80;	   //1T
+	//TMOD &= ~0x04;	   //定时
+	//INT_CLKO &= ~0x01; //不输出时钟
 
-	TH0 = (uint8_t)((65536UL - 22118400 / 32000) >> 8);
-	TL0 = (uint8_t)(65536UL - 22118400 / 32000);
+	//TH0 = (uint8_t)((65536UL - 22118400 / 32000) >> 8);
+	//TL0 = (uint8_t)(65536UL - 22118400 / 32000);
 
-	ES = 1; //允许串口中断
+	//ES = 1; //允许串口中断
 
-	EA = 1; //允许全局中断
+	//EA = 1; //允许全局中断
 }
 
 void main()
@@ -97,6 +97,6 @@ void main()
 	while (1)
 	{
 		PlayerProcess(&mainPlayer);
-		printf("sdfsf%d", mainPlayer.status);
 	}
+	
 }

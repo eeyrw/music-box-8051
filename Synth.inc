@@ -12,7 +12,7 @@ _SynthAsm:
 
 	; r4,r5,r6,r7 : temporary registers
 
-.irp  Idx,0,1,2,3,4
+.irp  Idx,0,1,2,3,4,5
 	pSndUnit = pSynth+Idx*unitSz
 	mov a, (pSndUnit+pEnvelopeLevel)
 	mov b,a

@@ -30,7 +30,7 @@ envelopUpdateEnd$:
 
 
 pSynth = SynthAbsAddr
-.irp  Idx,0,1,2,3,4
+.irp  Idx,0,1,2,3,4,5
 	pSndUnit = pSynth+Idx*unitSz
 	mov a, (pSndUnit+pWavetablePos_int_l)
 	clr c

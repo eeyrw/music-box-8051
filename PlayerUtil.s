@@ -7,12 +7,9 @@
 .include "Player.inc"
 
 .area IABS    (ABS,DATA)
-.org 0x0010
+.org PlayrAbsAddr
 _mainPlayer::
 	.ds PlayerTotalSize
-;.area DSEG    (DATA)
-;_mainPlayer::
-;    .ds PlayerTotalSize
 .area CSEG    (CODE)
 
 _PlayNoteTimingCheck:

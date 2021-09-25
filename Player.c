@@ -4,6 +4,18 @@
 #include "SynthCore.h"
 #include "Player.h"
 
+void PlayUpdateNextScoreTickP(Player *player)
+{
+    uint32_t tempU32 = player->lastScoreTick;
+    uint8_t temp;
+    do
+    {
+        temp = *(player->scorePointer);
+        player->scorePointer++;
+        tempU32 += temp;
+    } while (temp == 0xFF);
+    player->lastScoreTick = tempU32;
+}
 
 void PlayerProcess(Player *player)
 {
@@ -17,7 +29,7 @@ void PlayerProcess(Player *player)
     }
     if (player->status == STATUS_PLAYING)
     {
-        if (PlayNoteTimingCheck(player))
+        if ((currentTick >> 8) >= player->lastScoreTick) //if (PlayNoteTimingCheck(player))
         {
             do
             {
@@ -32,7 +44,7 @@ void PlayerProcess(Player *player)
                     NoteOnAsm(temp);
                 }
             } while ((temp & 0x80) == 0);
-            PlayUpdateNextScoreTick(player);
+            PlayUpdateNextScoreTickP(player);
         }
     }
 }
@@ -42,7 +54,7 @@ void PlayerPlay(Player *player, uint8_t *score)
     player->lastScoreTick = 0;
     player->scorePointer = score;
     currentTick = 0;
-    PlayUpdateNextScoreTick(player);
+    PlayUpdateNextScoreTickP(player);
     player->status = STATUS_PLAYING;
 }
 

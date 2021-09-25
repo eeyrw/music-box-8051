@@ -1,3 +1,5 @@
+
+
 ENVELOP_LEN=256
 POLY_NUM=5
 WAVETABLE_ATTACK_LEN=1507
@@ -43,4 +45,7 @@ pSampleVal=9
 pMixOut_l=unitSz*POLY_NUM
 pMixOut_h=unitSz*POLY_NUM+1
 pLastSoundUnit=unitSz*POLY_NUM+2
+
+SynthAbsAddr = 0x10+11+6
+SynthTotalSize = unitSz*POLY_NUM+3
 

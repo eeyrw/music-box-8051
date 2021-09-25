@@ -1,17 +1,16 @@
 .module SYNTH_CORE_ASM
 .include "SynthCore.inc"
-.globl _GenDecayEnvlopeAsmP
-.globl _NoteOnAsmP
+.include "Player.inc"
+.globl _GenDecayEnvlopeAsm
+.globl _NoteOnAsm
+.globl _synthForAsm
 
+.area IABS    (ABS,DATA)
+.org SynthAbsAddr
+_synthForAsm::
+	.ds SynthTotalSize
 .area CSEG    (CODE)
-_GenDecayEnvlopeAsmP:
-	;clr a				; Register A as loop index.
-	;ldw y,#_synthForAsm  		; Load sound unit pointer to register Y.#_synthForAsm is synthesizer object's address.
-;loopGenDecayEnvlope$:
-    ;cp a,#POLY_NUM
-    ;jreq loopGenDecayEnvlope_end$
-	;push a				; Keep a as temporary variable
-	; loop body
+_GenDecayEnvlopeAsm:
 
 	;    SoundUnitUnion* soundUnionList=&(synth->SoundUnitUnionList[0]);
 	;	for (uint8_t i = 0; i < POLY_NUM; i++)
@@ -24,32 +23,38 @@ _GenDecayEnvlopeAsmP:
 	;		}
 	;	}
 
-	;ldw x,y
-	;ldw x,(pWavetablePos_int_h,x)
-	;cpw x,_WAVETABLE_ATTACK_LEN
-	;jrc envelopUpdateEnd$
-	;ld a,(pEnvelopePos,y)
-	;cp a,#(ENVELOP_LEN-1)
-	;jrnc envelopUpdateEnd$
-	;ld a,(pEnvelopePos,y)
-	;clrw x
-	;ld xl,a
-	;ld a,(_EnvelopeTable,x)
-	;ld (pEnvelopeLevel,y),a
-	;inc (pEnvelopePos,y)
 
-;envelopUpdateEnd$:	
+
+envelopUpdateEnd$:	
 						
-	;pop a
-    ;inc a
-	;addw y,#SoundUnitSize
-    ;jra loopGenDecayEnvlope$
-;loopGenDecayEnvlope_end$:
+
+
+pSynth = SynthAbsAddr
+.irp  Idx,0,1,2,3,4
+	pSndUnit = pSynth+Idx*unitSz
+	mov a, (pSndUnit+pWavetablePos_int_l)
+	clr c
+	subb a,#WAVETABLE_ATTACK_LEN
+	mov a, (pSndUnit+pWavetablePos_int_h)
+	subb a,#(WAVETABLE_ATTACK_LEN>>8)
+	jc 	loopGenDecayEnvlope_end'Idx'$
+	mov a,(pSndUnit+pEnvelopePos)
+	clr c
+	subb a,#(ENVELOP_LEN-1)
+	jnc loopGenDecayEnvlope_end'Idx'$
+	mov dptr,#_EnvelopeTable
+	mov a,(pSndUnit+pEnvelopePos)
+	movc a,@a+dptr
+	mov (pSndUnit+pEnvelopeLevel),a
+	inc (pSndUnit+pEnvelopePos)
+
+	loopGenDecayEnvlope_end'Idx'$:
+.endm
+
 
 ret
 
-_NoteOnAsmP:
-	;ldw y,#_synthForAsm  		; Load sound unit pointer to register Y. #_synthForAsm is synthesizer object's address.
+_NoteOnAsm:
 	;void NoteOn(Synthesizer* synth,uint8_t note)
 	;{
 	;	uint8_t lastSoundUnit = synth->lastSoundUnit;
@@ -69,34 +74,79 @@ _NoteOnAsmP:
 
 	;	synth->lastSoundUnit=lastSoundUnit;
 	;}
-	;ldw x,#SoundUnitSize
-	;ld a,(pLastSoundUnit,y)
-	;mul x,a
-	;addw x,#_synthForAsm 
-	;ldw y,x
-	;ld a,(0x03, sp) ;uint8_t note
-	;sla a ;note*=2 and drop bit7
-	;clrw x
-	;ld xl,a
-	;sim ;disable interrupt
-	;ldw x,(_WaveTable_Increment,x)
-	;ldw (pIncrement_int,y),x
-	;clr (pWavetablePos_frac,y)
-	;clr (pWavetablePos_int_h,y)
-	;clr (pWavetablePos_int_l,y)
-	;clr (pEnvelopePos,y)
-	;ld a,#255
-	;ld (pEnvelopeLevel,y),a
-	;rim ;enable interrput
 
-	;ldw y,#_synthForAsm 
-	;ld a,(pLastSoundUnit,y)
-	;inc a
-	;cp a,#POLY_NUM
-	;jrne lastSoundUnitUpdateEndNotEq$
-	;clr a
-;lastSoundUnitUpdateEndNotEq$:
-	;ld (pLastSoundUnit,y),a
+	;dpl = note
+	
+	pSynth = SynthAbsAddr
+	mov a,(pSynth+pLastSoundUnit)
+	mov b,#unitSz
+	mul ab
+	add a,#pSynth
+	mov r0,a ;base addr
+
+
+	clr ea
+	mov a,#0x7F
+	anl a,dpl
+	rl a
+	mov r6,a
+	mov dptr,#_WaveTable_Increment
+	movc a,@a+dptr
+	mov r4,a
+	inc dptr
+	mov a,r6
+	movc a,@a+dptr
+	mov r5,a
+
+	mov a,#pIncrement_frac
+	add a,r0
+	mov r1,a
+	mov a,r4
+	mov @r1,a
+
+	mov a,#pIncrement_int
+	add a,r0
+	mov r1,a
+	mov a,r5
+	mov @r1,a
+
+
+	mov a,#pEnvelopeLevel
+	add a,r0
+	mov r1,a
+	mov @r1,#255
+
+	mov a,#pEnvelopePos
+	add a,r0
+	mov r1,a
+	mov @r1,#0
+
+	mov a,#pEnvelopePos
+	add a,r0
+	mov r1,a
+	mov @r1,#0
+
+	mov a,#pWavetablePos_int_l
+	add a,r0
+	mov r1,a
+	mov @r1,#0
+
+	mov a,#pWavetablePos_int_h
+	add a,r0
+	mov r1,a
+	mov @r1,#0
+
+	setb ea
+
+	mov r4,(pSynth+pLastSoundUnit)
+	inc r4
+	mov a,r4
+	clr c
+	subb a,#POLY_NUM
+	jnz lastSoundUnitUpdateEndNotEq$
+	mov r4,#0
+lastSoundUnitUpdateEndNotEq$:
+	mov (pSynth+pLastSoundUnit),r4
 
 
 ret

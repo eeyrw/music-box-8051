@@ -16,5 +16,8 @@ pLastScoreTick_b0=4
 pScorePointer=5
 pMainSynthesizer=8
 
+
+PlayrAbsAddr = 0x0010
 PlayerTotalSize = pMainSynthesizer+3
+
 

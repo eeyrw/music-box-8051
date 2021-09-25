@@ -22,7 +22,7 @@ void SynthInit(Synthesizer *synth)
 	synth->lastSoundUnit = 0;
 }
 #ifdef RUN_TEST
-void NoteOnAsm(uint8_t note)
+void NoteOnAsmP(uint8_t note)
 {
 	uint8_t lastSoundUnit = synthForAsm.lastSoundUnit;
 
@@ -42,7 +42,7 @@ void NoteOnAsm(uint8_t note)
 	synthForAsm.lastSoundUnit = lastSoundUnit;
 }
 
-void GenDecayEnvlopeAsm(void)
+void GenDecayEnvlopeAsmP(void)
 {
 	__data SoundUnitUnion *soundUnionList = &(synthForAsm.SoundUnitUnionList[0]);
 	for (uint8_t i = 0; i < POLY_NUM; i++)

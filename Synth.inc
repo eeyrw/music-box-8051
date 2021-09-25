@@ -1,11 +1,17 @@
-.globl _synthForAsm
-.area DSEG    (DATA)
-_synthForAsm::
-	.ds unitSz*POLY_NUM+3
+
+
 .area CSEG    (CODE)
 _SynthAsm:
+	;push dpl
+	;push dph
+	;push b
+	;push a
+	pSynth = SynthAbsAddr
+	mov (pSynth+pMixOut_l),#0
+	mov (pSynth+pMixOut_h),#0	
+
 	; r4,r5,r6,r7 : temporary registers
-	pSynth = _synthForAsm
+
 .irp  Idx,0,1,2,3,4
 	pSndUnit = pSynth+Idx*unitSz
 	mov a, (pSndUnit+pEnvelopeLevel)
@@ -19,14 +25,12 @@ _SynthAsm:
 	movc a,@a+dptr
 	mov (pSndUnit+pSampleVal),a
 
-	jnb a.7,signedMulBr1'Idx'$	; Do signed mutiple with unsigned MUL
+	jb a.7,signedMulBr1'Idx'$	; Do signed mutiple with unsigned MUL
 	mul ab
-
 	mov (pSndUnit+pVal_l),a
 	mov (pSndUnit+pVal_h),b
-
 	mov a,b			; Div with 0xFF
-	clr b
+	mov b,#0
 	sjmp signedMulBr2End'Idx'$
 
 signedMulBr1'Idx'$:
@@ -34,13 +38,15 @@ signedMulBr1'Idx'$:
 		inc a
 		mul ab				; Mutiple envelopeLevel with sample
 
+		cpl  a
+		add  a,#1
 		mov (pSndUnit+pVal_l),a
-		mov (pSndUnit+pVal_h),b
-
-		mov a,b				; Div with 0xFF
-		mov b,#0xFF
+		mov a,b
 		cpl a
-		inc a
+		addc a,#0
+		mov (pSndUnit+pVal_h),a	
+		mov b,#0xFF ; Div with 0xFF
+	
 signedMulBr2End'Idx'$:
 		add a, (pSynth+pMixOut_l)
 		mov (pSynth+pMixOut_l),a
@@ -49,7 +55,7 @@ signedMulBr2End'Idx'$:
 		mov (pSynth+pMixOut_h),a
 
 		mov a,(pSndUnit+pIncrement_frac)
-		addc a,(pSndUnit+pWavetablePos_frac)
+		add a,(pSndUnit+pWavetablePos_frac)
 		mov (pSndUnit+pWavetablePos_frac),a
 
 		mov a,(pSndUnit+pIncrement_int)
@@ -61,12 +67,15 @@ signedMulBr2End'Idx'$:
 		mov (pSndUnit+pWavetablePos_int_h),a
 
 	branch0_start'Idx'$:
-		clr cy
+		;		if (waveTablePosInt >= WAVETABLE_LEN)
+		;	waveTablePosInt -= WAVETABLE_LOOP_LEN;
+		clr c
 		mov a,(pSndUnit+pWavetablePos_int_l)
-		subb a,#WAVETABLE_LEN
-		mov a,(pSndUnit+pWavetablePos_int_h)
-		subb a, #(WAVETABLE_LEN>>8)
-		jc branch0_end'Idx'$			; Jump if WAVETABLE_LEN is great than x
+		subb a,#(WAVETABLE_LEN)
+		mov a,(pSndUnit+pWavetablePos_int_h) 
+		subb a,#((WAVETABLE_LEN)>>8)
+		jc branch0_end'Idx'$
+		clr c			
 		mov a,(pSndUnit+pWavetablePos_int_l)
 		subb a,#WAVETABLE_LOOP_LEN
 		mov (pSndUnit+pWavetablePos_int_l),a
@@ -76,7 +85,12 @@ signedMulBr2End'Idx'$:
 	branch0_end'Idx'$:
 loopSynthEnd'Idx'$:
 .endm 
-		clr cy
+
+mov r4,(pSynth+pMixOut_l)
+mov r5,(pSynth+pMixOut_h)
+sjmp branch_lt_gt_end$
+
+clr c
 mov a,(pSynth+pMixOut_l)
 subb a,#253
 mov a,(pSynth+pMixOut_h)
@@ -85,7 +99,7 @@ jc branch_lt_253$
 mov r4,#253
 mov r5,#(253>>8)
 branch_lt_253$:
-clr cy
+clr c
 mov a,#-255
 subb a,(pSynth+pMixOut_l)
 mov a,#(-255>>8)
@@ -97,16 +111,24 @@ branch_lt_gt_end$:
 
 ; mixOut = mixOut>>1
 mov a,r5
-mov cy,acc.7
-rrc a
-mov r5,a
+mov c,a.0
 mov a,r4
 rrc a
 mov r4,a
-clr cy
+clr c
 subb a,#0x80
 
 
+;mov REG_CCAP0L,a
+mov REG_CCAP0H,a
+
+cpl a
 
 
-    ret
+;mov REG_CCAP1L,a
+mov REG_CCAP1H,a
+
+;pop a
+;pop b
+;pop dph
+;pop dpl

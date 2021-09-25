@@ -198,12 +198,14 @@ uint8_t SynthParamterCompare(Synthesizer *synthA, Synthesizer *synthB)
     }
     return error;
 }
+extern void NoteOnAsmP(uint8_t n);
+extern void GenDecayEnvlopeAsmP(void);
 
 void TestSynth(void)
 {
     uint8_t tryNum = 3;
     printf("~~~~~~~Start testing synthesizer.~~~~~~~\n");
-    for (uint8_t i = 0; i < POLY_NUM; i++)
+    for (uint8_t i = 0; i < POLY_NUM+1; i++)
     {
         NoteOnC(i * 2 + 80);
         NoteOnAsm(i * 2 + 80);

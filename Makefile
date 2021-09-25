@@ -25,13 +25,13 @@ CODE_SIZE = --code-loc 0x0000 --code-size 32768
 # INT-MEM Size = 256 Bytes
 IRAM_SIZE = --idata-loc 0x0000  --iram-size 256
 # EXT-MEM Size = 1K Bytes
-XRAM_SIZE = --xram-loc 0x0000 --xram-size 768
+XRAM_SIZE = --xram-loc 0x0000 --xram-size 1792
 
 # all the files will be generated with this name (main.elf, main.bin, main.hex, etc)
 PROJECT_NAME=music-box-8051
 
 # specify define
-DDEFS       = RUN_TEST
+DDEFS       = NO_RUN_TEST
 
 # define root dir
 ROOT_DIR     = .
@@ -58,8 +58,8 @@ ASM_SRC   += PeriodTimer.s
 ASM_SRC   += PlayerUtil.s
 ASM_SRC   += SynthCoreAsm.s
 
-ASM_SRC   += Synth_testbench.s
-ASM_SRC   += UpdateTick_testbench.s
+# ASM_SRC   += Synth_testbench.s
+# ASM_SRC   += UpdateTick_testbench.s
 
 INC_DIR  = $(patsubst %, -I%, $(INCLUDE_DIRS))
 

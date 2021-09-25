@@ -3,6 +3,7 @@
 #include <string.h>
 #include "SynthCore.h"
 #include "Player.h"
+#include "STC15F_SDCC.h"
 
 void PlayUpdateNextScoreTickP(Player *player)
 {
@@ -29,7 +30,11 @@ void PlayerProcess(Player *player)
     }
     if (player->status == STATUS_PLAYING)
     {
-        if ((currentTick >> 8) >= player->lastScoreTick) //if (PlayNoteTimingCheck(player))
+        uint32_t t;
+        EA = 0;
+        t = (currentTick >> 8);
+        EA = 1;
+        if (t >= player->lastScoreTick) //if (PlayNoteTimingCheck(player))
         {
             do
             {

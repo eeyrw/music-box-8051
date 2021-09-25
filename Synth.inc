@@ -92,21 +92,21 @@ sjmp branch_lt_gt_end$
 
 clr c
 mov a,(pSynth+pMixOut_l)
-subb a,#253
+subb a,#255
 mov a,(pSynth+pMixOut_h)
-subb a,#(253>>8)
-jc branch_lt_253$
-mov r4,#253
-mov r5,#(253>>8)
-branch_lt_253$:
+subb a,#(255>>8)
+jc branch_lt_255$
+mov r4,#255
+mov r5,#(255>>8)
+branch_lt_255$:
 clr c
-mov a,#-255
+mov a,#-254
 subb a,(pSynth+pMixOut_l)
-mov a,#(-255>>8)
+mov a,#((-254)>>8)
 subb a,(pSynth+pMixOut_h)
 jc branch_lt_gt_end$
-mov r4,#-255
-mov r5,#(-255>>8)
+mov r4,#-254
+mov r5,#(-254>>8)
 branch_lt_gt_end$:
 
 ; mixOut = mixOut>>1
@@ -119,13 +119,11 @@ clr c
 subb a,#0x80
 
 
-;mov REG_CCAP0L,a
 mov REG_CCAP0H,a
 
 cpl a
 
 
-;mov REG_CCAP1L,a
 mov REG_CCAP1H,a
 
 ;pop a

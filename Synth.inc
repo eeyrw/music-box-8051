@@ -88,26 +88,34 @@ loopSynthEnd'Idx'$:
 
 mov r4,(pSynth+pMixOut_l)
 mov r5,(pSynth+pMixOut_h)
-sjmp branch_lt_gt_end$
 
-clr c
-mov a,(pSynth+pMixOut_l)
-subb a,#255
-mov a,(pSynth+pMixOut_h)
-subb a,#(255>>8)
-jc branch_lt_255$
-mov r4,#255
-mov r5,#(255>>8)
-branch_lt_255$:
-clr c
-mov a,#-254
-subb a,(pSynth+pMixOut_l)
-mov a,#((-254)>>8)
-subb a,(pSynth+pMixOut_h)
-jc branch_lt_gt_end$
-mov r4,#-254
-mov r5,#(-254>>8)
-branch_lt_gt_end$:
+
+;	if (synthForAsm.mixOut > 253)
+	clr	c
+	mov	a,#0xfd
+	subb	a,r4
+	mov	a,#(0x00 ^ 0x80)
+	mov	b,r5
+	xrl	b,#0x80
+	subb	a,b
+	jnc	00104$
+;	synthForAsm.mixOut = 253;
+	mov	r4,#0xfd
+	mov	r5,#0x00
+	sjmp	00107$
+00104$:
+;	else if (synthForAsm.mixOut < -255)
+	clr	c
+	mov	a,r4
+	subb	a,#0x01
+	mov	a,r5
+	xrl	a,#0x80
+	subb	a,#0x7f
+	jnc	00107$
+;	synthForAsm.mixOut = -255;
+	mov	r4,#0x01
+	mov	r5,#0xff
+00107$:
 
 ; mixOut = mixOut>>1
 mov a,r5
@@ -118,13 +126,10 @@ mov r4,a
 clr c
 subb a,#0x80
 
-
 mov REG_CCAP0H,a
-
 cpl a
-
-
 mov REG_CCAP1H,a
+
 
 ;pop a
 ;pop b

@@ -38,6 +38,9 @@ void UART1_int(void) __interrupt(UART1_VECTOR)
 }
 #define CCP_S0 0x10 //P_SW1.4
 #define CCP_S1 0x20 //P_SW1.5
+
+#define P3DR (*(__xdata unsigned char volatile *)0xfe2b)
+
 void HardwareInit(void)
 {
 	// if(GPIOx->Mode == GPIO_PullUp)		P1M1 &= ~GPIOx->Pin,	P1M0 &= ~GPIOx->Pin;	 //上拉准双向口
@@ -47,6 +50,10 @@ void HardwareInit(void)
 
 	P3M1 &= ~(1 << 2), P3M0 |= (1 << 2); // P3.2 推挽输出
 	P3M1 &= ~(1 << 3), P3M0 |= (1 << 3); // P3.3 推挽输出
+
+	P_SW2 |= 1 << 7; // Enable XRAM reg access
+	P3DR &= ~(1 << 2);
+	P3DR &= ~(1 << 3);
 
 	P5M1 &= ~(1 << 5), P5M0 |= (1 << 5); // P5.5 推挽输出
 	P55 = 0;
@@ -102,13 +109,13 @@ void HardwareInit(void)
 	//  P_SW1 = ACC;
 
 	CCON = 0; //初始化PCA控制寄存器
-		//PCA定时器停止
-		//清除CF标志
-		//清除模块中断标志
-	CL = 0; //复位PCA寄存器
+			  //PCA定时器停止
+			  //清除CF标志
+			  //清除模块中断标志
+	CL = 0;	  //复位PCA寄存器
 	CH = 0;
 	CMOD = 0x08; //设置PCA时钟源
-		//禁止PCA定时器溢出中断
+				 //禁止PCA定时器溢出中断
 	// PCA_CLK_1T();
 	PCA_PWM0 = 0x00;		//PCA模块0工作于8位PWM
 	CCAP0H = CCAP0L = 0xFF; //PWM0的占空比为87.5% ((100H-20H)/100H)

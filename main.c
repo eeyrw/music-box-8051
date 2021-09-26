@@ -45,7 +45,10 @@ void HardwareInit(void)
 	// if(GPIOx->Mode == GPIO_OUT_OD)		P1M1 |=  GPIOx->Pin,	P1M0 |=  GPIOx->Pin;	 //开漏输出
 	// if(GPIOx->Mode == GPIO_OUT_PP)		P1M1 &= ~GPIOx->Pin,	P1M0 |=  GPIOx->Pin;	 //推挽输出
 
-	P5M1 &= ~(1 << 5), P5M0 |= (5 << 5); // P5.5 推挽输出
+	P3M1 &= ~(1 << 2), P3M0 |= (1 << 2); // P3.2 推挽输出
+	P3M1 &= ~(1 << 3), P3M0 |= (1 << 3); // P3.3 推挽输出
+
+	P5M1 &= ~(1 << 5), P5M0 |= (1 << 5); // P5.5 推挽输出
 	P55 = 0;
 
 	S1_8bit();
@@ -83,9 +86,10 @@ void HardwareInit(void)
 
 	ES = 1; //允许串口中断
 
-	ACC = P_SW1;
-	ACC &= ~(CCP_S0 | CCP_S1); //CCP_S0=0 CCP_S1=0
-	P_SW1 = ACC;			   //(P1.2/ECI, P1.1/CCP0, P1.0/CCP1, P3.7/CCP2)
+	//uint8_t t;
+	//t = P_SW1;
+	//t &= ~(CCP_S0 | CCP_S1); //CCP_S0=0 CCP_S1=0
+	//P_SW1 = t;			   //(P1.2/ECI, P1.1/CCP0, P1.0/CCP1, P3.7/CCP2)
 
 	//  ACC = P_SW1;
 	//  ACC &= ~(CCP_S0 | CCP_S1);      //CCP_S0=1 CCP_S1=0
@@ -98,14 +102,14 @@ void HardwareInit(void)
 	//  P_SW1 = ACC;
 
 	CCON = 0; //初始化PCA控制寄存器
-			  //PCA定时器停止
-			  //清除CF标志
-			  //清除模块中断标志
-	CL = 0;	  //复位PCA寄存器
+		//PCA定时器停止
+		//清除CF标志
+		//清除模块中断标志
+	CL = 0; //复位PCA寄存器
 	CH = 0;
-	CMOD = 0x02; //设置PCA时钟源
-				 //禁止PCA定时器溢出中断
-	PCA_CLK_1T();
+	CMOD = 0x08; //设置PCA时钟源
+		//禁止PCA定时器溢出中断
+	// PCA_CLK_1T();
 	PCA_PWM0 = 0x00;		//PCA模块0工作于8位PWM
 	CCAP0H = CCAP0L = 0xFF; //PWM0的占空比为87.5% ((100H-20H)/100H)
 	CCAPM0 = 0x42;			//PCA模块0为8位PWM模式

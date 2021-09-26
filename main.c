@@ -28,7 +28,12 @@ void UART1_int(void) __interrupt(UART1_VECTOR)
 	{
 		RI = 0;
 		//RX1_Buffer[RX1_Cnt] = SBUF; //保存一个字节
-		NoteOnAsm(SBUF);
+		//NoteOnAsm(SBUF);
+		uint8_t r = SBUF;
+		if(r==0xFF)
+		{
+			PlayerPlay(&mainPlayer, Score);
+		}
 	}
 
 	if (TI)

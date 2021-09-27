@@ -1,0 +1,7 @@
+; Sample name: Harp D#5
+; Sample's base frequency: 621.8548762513416 Hz
+; Sample's sample rate: 32000 Hz
+
+WAVETABLE_LEN=13187
+WAVETABLE_ATTACK_LEN=12621
+WAVETABLE_LOOP_LEN=566

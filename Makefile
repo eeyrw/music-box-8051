@@ -96,6 +96,7 @@ Synth_testbench.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
 UpdateTick_testbench.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
 SynthCoreAsm.rel: SynthCore.inc
 PlayerUtil.rel: SynthCore.inc Player.inc
+SynthCore.inc: WaveTable.inc
 endif
 
 

@@ -1,7 +1,7 @@
-; Sample name: Harp D#5
-; Sample's base frequency: 621.8548762513416 Hz
+; Sample name: Square Wave C5
+; Sample's base frequency: 524.5767916408392 Hz
 ; Sample's sample rate: 32000 Hz
 
-WAVETABLE_LEN=13187
-WAVETABLE_ATTACK_LEN=12621
-WAVETABLE_LOOP_LEN=566
+WAVETABLE_LEN=4557
+WAVETABLE_ATTACK_LEN=4069
+WAVETABLE_LOOP_LEN=488

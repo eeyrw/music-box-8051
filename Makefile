@@ -91,12 +91,11 @@ ifneq ($(MAKECMDGOALS),clean)
 -include $(DEPS)
 # Beacuse SDCC's assembler has no way to auto output dependency info,
 # the dependency is manually written here.	
-PeriodTimer.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
+PeriodTimer.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc WaveTable.inc
 Synth_testbench.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
 UpdateTick_testbench.rel: SynthCore.inc 8051.inc Synth.inc UpdateTick.inc
-SynthCoreAsm.rel: SynthCore.inc
+SynthCoreAsm.rel: SynthCore.inc WaveTable.inc
 PlayerUtil.rel: SynthCore.inc Player.inc
-SynthCore.inc: WaveTable.inc
 endif
 
 

@@ -30,7 +30,7 @@ void UART1_int(void) __interrupt(UART1_VECTOR)
 		//RX1_Buffer[RX1_Cnt] = SBUF; //保存一个字节
 		//NoteOnAsm(SBUF);
 		uint8_t r = SBUF;
-		if(r==0xFF)
+		if (r == 0xFF)
 		{
 			PlayerPlay(&mainPlayer, Score);
 		}
@@ -114,13 +114,13 @@ void HardwareInit(void)
 	//  P_SW1 = ACC;
 
 	CCON = 0; //初始化PCA控制寄存器
-			  //PCA定时器停止
-			  //清除CF标志
-			  //清除模块中断标志
-	CL = 0;	  //复位PCA寄存器
+		//PCA定时器停止
+		//清除CF标志
+		//清除模块中断标志
+	CL = 0; //复位PCA寄存器
 	CH = 0;
 	CMOD = 0x08; //设置PCA时钟源
-				 //禁止PCA定时器溢出中断
+		//禁止PCA定时器溢出中断
 	// PCA_CLK_1T();
 	PCA_PWM0 = 0x00;		//PCA模块0工作于8位PWM
 	CCAP0H = CCAP0L = 0xFF; //PWM0的占空比为87.5% ((100H-20H)/100H)

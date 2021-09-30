@@ -85,17 +85,17 @@ _SynthAsm:
 	mov r4,(pSynth+pMixOut_l)
 	mov r5,(pSynth+pMixOut_h)
 
-	;if (synthForAsm.mixOut > 253)
+	;if (synthForAsm.mixOut > 255)
 	clr	c
-	mov	a,#0xfd
+	mov	a,#0xff
 	subb	a,r4
 	mov	a,#(0x00 ^ 0x80)
 	mov	b,r5
 	xrl	b,#0x80
 	subb	a,b
 	jnc	clipBranchLowerBound$
-	;synthForAsm.mixOut = 253;
-	mov	r4,#0xfd
+	;synthForAsm.mixOut = 255;
+	mov	r4,#0xff
 	mov	r5,#0x00
 	sjmp	clipBranchEnd$
 	clipBranchLowerBound$:

@@ -21,7 +21,7 @@ MODEL  = large
 # ------------------------------------------------------
 # Memory Layout
 # PRG Size = 32K Bytes
-CODE_SIZE = --code-loc 0x0000 --code-size 32768
+CODE_SIZE = --code-loc 0x0000 --code-size 61440
 # INT-MEM Size = 256 Bytes
 IRAM_SIZE = --idata-loc 0x0000  --iram-size 256
 # EXT-MEM Size = 1K Bytes

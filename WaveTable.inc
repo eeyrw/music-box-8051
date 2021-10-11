@@ -1,7 +1,7 @@
-; Sample name: CP-80 EP C4
-; Sample's base frequency: 262.2347666207412 Hz
+; Sample name: Square Wave C5
+; Sample's base frequency: 524.4662468781327 Hz
 ; Sample's sample rate: 32000 Hz
 
-WAVETABLE_LEN=8461
-WAVETABLE_ATTACK_LEN=8340
-WAVETABLE_LOOP_LEN=121
+WAVETABLE_LEN=1389
+WAVETABLE_ATTACK_LEN=1328
+WAVETABLE_LOOP_LEN=61

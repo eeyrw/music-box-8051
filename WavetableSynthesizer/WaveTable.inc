@@ -1,0 +1,7 @@
+; Sample name: CP-80 EP C4
+; Sample's base frequency: 262.2347666207412 Hz
+; Sample's sample rate: 32000 Hz
+
+WAVETABLE_LEN=8461
+WAVETABLE_ATTACK_LEN=8340
+WAVETABLE_LOOP_LEN=121

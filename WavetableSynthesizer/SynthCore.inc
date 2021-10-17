@@ -1,7 +1,7 @@
 .include "WaveTable.inc"
 
 ENVELOP_LEN=256
-POLY_NUM=6
+POLY_NUM=8
 
 
 DECAY_TIME_FACTOR=100

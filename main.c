@@ -56,9 +56,9 @@ void HardwareInit(void)
 	P3M1 &= ~(1 << 2), P3M0 |= (1 << 2); // P3.2 推挽输出
 	P3M1 &= ~(1 << 3), P3M0 |= (1 << 3); // P3.3 推挽输出
 
-	P_SW2 |= 1 << 7; // Enable XRAM reg access
-	P3DR &= ~(1 << 2);
-	P3DR &= ~(1 << 3);
+	// P_SW2 |= 1 << 7; // Enable XRAM reg access
+	// P3DR &= ~(1 << 2);
+	// P3DR &= ~(1 << 3);
 
 	P5M1 &= ~(1 << 5), P5M0 |= (1 << 5); // P5.5 推挽输出
 	P55 = 0;

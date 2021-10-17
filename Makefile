@@ -37,29 +37,29 @@ DDEFS       = NO_RUN_TEST
 ROOT_DIR     = .
 
 # define include dir
-INCLUDE_DIRS = 
+INCLUDE_DIRS = WavetableSynthesizer
 
-# define stm32f4 lib dir
-LIBDIR   = $(ROOT_DIR)/stm8
+# define lib dir
+LIBDIR   = 
 
 # user specific
 
 SRC 	+= main.c
-SRC 	+= AlgorithmTest.c
-SRC 	+= SynthCore.c
-SRC 	+= Player.c
+SRC 	+= WavetableSynthesizer/AlgorithmTest.c
+SRC 	+= WavetableSynthesizer/SynthCore.c
+SRC 	+= WavetableSynthesizer/Player.c
 SRC 	+= UartRedirect.c
-SRC 	+= WaveTable.c
-SRC 	+= EnvelopTable.c
-SRC 	+= score.c
+SRC 	+= WavetableSynthesizer/WaveTable.c
+SRC 	+= WavetableSynthesizer/EnvelopTable.c
+SRC 	+= WavetableSynthesizer/score.c
 
 ASM_SRC =
-ASM_SRC   += PeriodTimer.s
-ASM_SRC   += PlayerUtil.s
-ASM_SRC   += SynthCoreAsm.s
+ASM_SRC   += WavetableSynthesizer/PeriodTimer.s
+ASM_SRC   += WavetableSynthesizer/PlayerUtil.s
+ASM_SRC   += WavetableSynthesizer/SynthCoreAsm.s
 
-# ASM_SRC   += Synth_testbench.s
-# ASM_SRC   += UpdateTick_testbench.s
+# ASM_SRC   += WavetableSynthesizer/Synth_testbench.s
+# ASM_SRC   += WavetableSynthesizer/UpdateTick_testbench.s
 
 INC_DIR  = $(patsubst %, -I%, $(INCLUDE_DIRS))
 
@@ -141,4 +141,5 @@ clean:
 	@-rm -rf $(PROJECT_NAME).cdb	
 	@-rm -rf $(PROJECT_NAME).hex
 	@-rm -rf $(PROJECT_NAME).bin
+	@-rm -rf $(PROJECT_NAME).mem
 	@-rm -rf $(DEPS)

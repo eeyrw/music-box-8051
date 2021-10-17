@@ -81,6 +81,8 @@ void HardwareInit(void)
 #endif
 
 #ifdef STC8
+
+    // STC8GK08A series has only timer0 and timer1.
     SCON = 0x50;
     TMOD = 0x00;
     TL1 = Timer2_Reload;

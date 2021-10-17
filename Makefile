@@ -31,7 +31,8 @@ XRAM_SIZE = --xram-loc 0x0000 --xram-size 1792
 PROJECT_NAME=music-box-8051
 
 # specify define
-DDEFS       = NO_RUN_TEST
+DEFS       = NO_RUN_TEST
+DEFS += STC8
 
 # define root dir
 ROOT_DIR     = .
@@ -49,6 +50,7 @@ SRC 	+= WavetableSynthesizer/AlgorithmTest.c
 SRC 	+= WavetableSynthesizer/SynthCore.c
 SRC 	+= WavetableSynthesizer/Player.c
 SRC 	+= UartRedirect.c
+SRC 	+= Bsp.c
 SRC 	+= WavetableSynthesizer/WaveTable.c
 SRC 	+= WavetableSynthesizer/EnvelopTable.c
 SRC 	+= WavetableSynthesizer/score.c
@@ -64,7 +66,7 @@ ASM_SRC   += WavetableSynthesizer/SynthCoreAsm.s
 INC_DIR  = $(patsubst %, -I%, $(INCLUDE_DIRS))
 
 # run from Flash
-DEFS	 = $(DDEFS)
+DDEFS	 = $(patsubst %, -D%, $(DEFS))
 DEPS  = $(SRC:.c=.d)
 OBJECTS  = $(SRC:.c=.rel) $(ASM_SRC:.s=.rel)
 OTHER_OUTPUTS += $(ASM_SRC:.s=.asm) $(SRC:.c=.asm)
@@ -74,7 +76,7 @@ OTHER_OUTPUTS += $(ASM_SRC:.s=.sym) $(SRC:.c=.sym)
 
 
 CFLAGS  = -m$(ARCH) -p$(MCU) --model-$(MODEL) --std-sdcc11
-CFLAGS += -DF_CPU=$(F_CPU)UL -I. -I$(LIBDIR) -D$(DEFS) --stack-auto
+CFLAGS += -DF_CPU=$(F_CPU)UL -I. -I$(LIBDIR) $(DDEFS) --stack-auto
 ASFLAGS  = -plosgff -l -s
 LD_FLAGS = -m$(ARCH) -l$(ARCH) --out-fmt-ihx -m$(MCU_MODEL) --model-$(MODEL) $(CODE_SIZE) $(IRAM_SIZE) $(XRAM_SIZE) --stack-auto
 

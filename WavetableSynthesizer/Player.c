@@ -47,7 +47,7 @@ void PlayerProcess(Player *player)
                 else
                 {
                     NoteOnAsm(temp);
-                    	putchar(temp);
+                    putchar(temp);
                 }
             } while ((temp & 0x80) == 0);
             PlayUpdateNextScoreTickP(player);

@@ -4,7 +4,6 @@
 #define MAIN_Fosc 22118400UL //定义主时钟
 #define BaudRate1 460800UL   //选择波特率
 
-#define Timer1_Reload (65536UL - (MAIN_Fosc / 4 / BaudRate1)) //Timer 1 重装值， 对应300KHZ
 #define Timer2_Reload (65536UL - (MAIN_Fosc / 4 / BaudRate1)) //Timer 2 重装值， 对应300KHZ
 
 #define OUTPUT_PIN 5
@@ -14,8 +13,6 @@
 
 #define CCP_S0 0x10 //P_SW1.4
 #define CCP_S1 0x20 //P_SW1.5
-
-#define P3DR (*(__xdata unsigned char volatile *)0xfe2b)
 
 extern __data Player mainPlayer;
 extern __code unsigned char Score[];
@@ -48,15 +45,14 @@ void HardwareInit(void)
     // if(GPIOx->Mode == GPIO_OUT_OD)		P1M1 |=  GPIOx->Pin,	P1M0 |=  GPIOx->Pin;	 //开漏输出
     // if(GPIOx->Mode == GPIO_OUT_PP)		P1M1 &= ~GPIOx->Pin,	P1M0 |=  GPIOx->Pin;	 //推挽输出
 
+
     P3M1 &= ~(1 << 2), P3M0 |= (1 << 2); // P3.2 推挽输出
     P3M1 &= ~(1 << 3), P3M0 |= (1 << 3); // P3.3 推挽输出
 
-    // P_SW2 |= 1 << 7; // Enable XRAM reg access
-    // P3DR &= ~(1 << 2);
-    // P3DR &= ~(1 << 3);
-
     P5M1 &= ~(1 << 5), P5M0 |= (1 << 5); // P5.5 推挽输出
     P55 = 0;
+
+#ifdef STC15F
 
     S1_8bit();
     S1_USE_P30P31(); //UART1 使用P30 P31口	默认
@@ -80,6 +76,21 @@ void HardwareInit(void)
     AUXR |= (1 << 4); //Timer run enable
     REN = 1;          //允许接收
 
+    ES = 1; //允许串口中断
+
+#endif
+
+#ifdef STC8
+    SCON = 0x50;
+    TMOD = 0x00;
+    TL1 = Timer2_Reload;
+    TH1 = Timer2_Reload >> 8;
+    TR1 = 1;
+    AUXR = 0x40;
+    ES = 1; //允许串口中断
+
+#endif
+
     TR0 = 0;                   //停止计数
     PT0 = 1;                   //高优先级中断
     TMOD = (TMOD & ~0x03) | 0; //工作模式,0: 16位自动重装, 1: 16位定时/计数, 2: 8位自动重装, 3: 16位自动重装, 不可屏蔽中断
@@ -90,23 +101,6 @@ void HardwareInit(void)
 
     TH0 = (uint8_t)((65536UL - MAIN_Fosc / 32000) >> 8);
     TL0 = (uint8_t)(65536UL - MAIN_Fosc / 32000);
-
-    ES = 1; //允许串口中断
-
-    //uint8_t t;
-    //t = P_SW1;
-    //t &= ~(CCP_S0 | CCP_S1); //CCP_S0=0 CCP_S1=0
-    //P_SW1 = t;			   //(P1.2/ECI, P1.1/CCP0, P1.0/CCP1, P3.7/CCP2)
-
-    //  ACC = P_SW1;
-    //  ACC &= ~(CCP_S0 | CCP_S1);      //CCP_S0=1 CCP_S1=0
-    //  ACC |= CCP_S0;                  //(P3.4/ECI_2, P3.5/CCP0_2, P3.6/CCP1_2, P3.7/CCP2_2)
-    //  P_SW1 = ACC;
-    //
-    //  ACC = P_SW1;
-    //  ACC &= ~(CCP_S0 | CCP_S1);      //CCP_S0=0 CCP_S1=1
-    //  ACC |= CCP_S1;                  //(P2.4/ECI_3, P2.5/CCP0_3, P2.6/CCP1_3, P2.7/CCP2_3)
-    //  P_SW1 = ACC;
 
     CCON = 0; //初始化PCA控制寄存器
               //PCA定时器停止

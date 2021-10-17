@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include "STC15F_SDCC.h"
+#include "RegisterDefine.h"
 /*
  * Redirect stdout to UART
  */

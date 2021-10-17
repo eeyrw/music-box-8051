@@ -3,7 +3,7 @@
 #include <string.h>
 #include "SynthCore.h"
 #include "Player.h"
-#include "STC15F_SDCC.h"
+#include "RegisterDefine.h"
 
 void PlayUpdateNextScoreTickP(Player *player)
 {
@@ -47,6 +47,7 @@ void PlayerProcess(Player *player)
                 else
                 {
                     NoteOnAsm(temp);
+                    	putchar(temp);
                 }
             } while ((temp & 0x80) == 0);
             PlayUpdateNextScoreTickP(player);

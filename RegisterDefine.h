@@ -6,7 +6,7 @@
 #endif
 
 #ifdef STC8
-#include "STC15F_SDCC.h"
+#include "STC8xxxx_SDCC.h"
 #endif
 
 #endif

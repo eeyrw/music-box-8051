@@ -45,6 +45,12 @@ pSynth = SynthAbsAddr
 	mov dptr,#_EnvelopeTable
 	mov a,(pSndUnit+pEnvelopePos)
 	movc a,@a+dptr
+
+	; Apply global voice volume
+	; mov b,#200 
+	; mul ab
+	; mov a,b
+
 	mov (pSndUnit+pEnvelopeLevel),a
 	inc (pSndUnit+pEnvelopePos)
 

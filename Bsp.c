@@ -45,7 +45,6 @@ void HardwareInit(void)
     // if(GPIOx->Mode == GPIO_OUT_OD)		P1M1 |=  GPIOx->Pin,	P1M0 |=  GPIOx->Pin;	 //开漏输出
     // if(GPIOx->Mode == GPIO_OUT_PP)		P1M1 &= ~GPIOx->Pin,	P1M0 |=  GPIOx->Pin;	 //推挽输出
 
-
     P3M1 &= ~(1 << 2), P3M0 |= (1 << 2); // P3.2 推挽输出
     P3M1 &= ~(1 << 3), P3M0 |= (1 << 3); // P3.3 推挽输出
 

@@ -30,7 +30,7 @@ void UART1_int(void) __interrupt(UART1_VECTOR)
         {
             PlayerPlay(&mainPlayer, Score);
         }
-        else if(r==0xDD)
+        else if (r == 0xDD)
         {
             IAP_CONTR = 0x60;
         }

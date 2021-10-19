@@ -11,7 +11,7 @@ _SynthAsm:
 	pSndUnit = pSynth+Idx*unitSz
 	mov a, (pSndUnit+pEnvelopeLevel)
 	;mov b,a
-	mov r3,a
+	mov r4,a
 	jz soundUnitProcessEnd'Idx'$
 
 	mov dpl, (pSndUnit+pWavetablePos_int_l)
@@ -47,7 +47,7 @@ _SynthAsm:
 
 	add a,r0
 sampleLoadFinished'Idx'$:
-	mov b,r3
+	mov b,r4
 
 	;mov (pSndUnit+pSampleVal),a
 

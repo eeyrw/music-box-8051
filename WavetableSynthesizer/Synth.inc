@@ -10,7 +10,6 @@ _SynthAsm:
 
 	pSndUnit = pSynth+Idx*unitSz
 	mov a, (pSndUnit+pEnvelopeLevel)
-	;mov b,a
 	mov r4,a
 	jz soundUnitProcessEnd'Idx'$
 
@@ -21,8 +20,7 @@ _SynthAsm:
 	mov a,#(_WaveTable)
 	movc a,@a+dptr
 
-	;sjmp sampleLoadFinished'Idx'$
-
+.ifne USE_LINEAR_INTEROP
 	mov r0,a
 	mov a,#(_WaveTable+1)
 	movc a,@a+dptr	
@@ -46,15 +44,18 @@ _SynthAsm:
 	signedMulEnd0'Idx'$:
 
 	add a,r0
-sampleLoadFinished'Idx'$:
+.endif
 	mov b,r4
-
+.ifne DEBUG_SYNTH
 	;mov (pSndUnit+pSampleVal),a
+.endif
 
 	jb a.7,signedMulNegBranch'Idx'$	; Do signed mutiple with unsigned MUL
 	mul ab
-	;mov (pSndUnit+pVal_l),a
-	;mov (pSndUnit+pVal_h),b
+.ifne DEBUG_SYNTH
+	mov (pSndUnit+pVal_l),a
+	mov (pSndUnit+pVal_h),b
+.endif
 	mov a,b			; Div with 0xFF
 	mov b,#0
 	sjmp signedMulEnd'Idx'$
@@ -65,11 +66,15 @@ sampleLoadFinished'Idx'$:
 
 	cpl  a
 	add  a,#1
-	;mov (pSndUnit+pVal_l),a
+.ifne DEBUG_SYNTH
+	mov (pSndUnit+pVal_l),a
+.endif
 	mov a,b
 	cpl a
 	addc a,#0
-	;mov (pSndUnit+pVal_h),a	
+.ifne DEBUG_SYNTH
+	mov (pSndUnit+pVal_h),a	
+.endif
 	mov b,#0xFF ; Div with 0xFF	
 	signedMulEnd'Idx'$:
 

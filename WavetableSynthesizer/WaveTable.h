@@ -1,12 +1,12 @@
 #ifndef __WAVETABLE__
 #define __WAVETABLE__
-// Sample name: Harp D#5
-// Sample's base frequency: 619.461615976171 Hz
+// Sample name: CP-80 EP C4
+// Sample's base frequency: 262.24329160743173 Hz
 // Sample's sample rate: 32000 Hz
-#define WAVETABLE_LEN 2302
-#define WAVETABLE_ATTACK_LEN 2251
-#define WAVETABLE_LOOP_LEN 51
-#define WAVETABLE_ACTUAL_LEN 2303
+#define WAVETABLE_LEN 8338
+#define WAVETABLE_ATTACK_LEN 8216
+#define WAVETABLE_LOOP_LEN 122
+#define WAVETABLE_ACTUAL_LEN 8339
 
 #include <stdint.h>
 extern __code int8_t WaveTable[WAVETABLE_ACTUAL_LEN];

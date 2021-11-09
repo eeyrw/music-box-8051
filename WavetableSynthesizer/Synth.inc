@@ -115,44 +115,65 @@ sampleLoadFinished'Idx'$:
 	mov r4,(pSynth+pMixOut_l)
 	mov r5,(pSynth+pMixOut_h)
 
-	;if (synthForAsm.mixOut > 255)
-	clr	c
-	mov	a,#0xff
-	subb	a,r4
-	mov	a,#(0x00 ^ 0x80)
-	mov	b,r5
-	xrl	b,#0x80
-	subb	a,b
-	jnc	clipBranchLowerBound$
-	;synthForAsm.mixOut = 255;
-	mov	r4,#0xff
-	mov	r5,#0x00
-	sjmp	clipBranchEnd$
-	clipBranchLowerBound$:
-	;else if (synthForAsm.mixOut < -255)
-	clr	c
-	mov	a,r4
-	subb	a,#0x01
-	mov	a,r5
-	xrl	a,#0x80
-	subb	a,#0x7f
-	jnc	clipBranchEnd$
-	;synthForAsm.mixOut = -255;
-	mov	r4,#0x01
-	mov	r5,#0xff
-	clipBranchEnd$:
-
-	; mixOut = mixOut>>1
+	mixOut = mixOut>>1
 	mov a,r5
-	mov c,a.0
+	mov c,a.7
+	rrc a
+	mov r5,a
 	mov a,r4
 	rrc a
 	mov r4,a
+
+
+CLIP_UPPER=127
+CLIP_LOWER=-128
+
+;	main.c:24: if (synthForAsm.mixOut > CLIP_UPPER)
+	clr	c
+	mov	a,#(CLIP_UPPER&0xFF)
+	subb	a,r4
+	mov	a,#((CLIP_UPPER>>8) ^ 0x80)
+	mov	b,r5
+	xrl	b,#0x80
+	subb	a,b
+	jnc	00104$
+;	main.c:26: synthForAsm.mixOut = CLIP_UPPER;
+	mov	r4,#(CLIP_UPPER&0xFF)
+	mov	r5,#(CLIP_UPPER>>8)
+	sjmp	00107$
+00104$:
+;	main.c:28: else if (synthForAsm.mixOut < CLIP_LOWER)
+	clr	c
+	mov	a,r4
+	subb	a,#(CLIP_LOWER&0xFF)
+	mov	a,r5
+	xrl	a,#0x80
+	subb	a,#((CLIP_LOWER>>8)&0x7F)
+	jnc	00107$
+;	main.c:30: synthForAsm.mixOut = CLIP_LOWER;
+	mov	r4,#(CLIP_LOWER&0xFF)
+	mov	r5,#(CLIP_LOWER>>8)
+00107$:
+	mov a,r4
+
+	
+	; a = a - (-CLIP_LOWER)
 	clr c
+	subb a,#(CLIP_LOWER&0xFF)
+	mov r4,a
+	mov a,r5
+	subb a,#((CLIP_LOWER>>8)&0xFF)
+	mov r5,a
 
-	; a = a - (-128)
-	subb a,#0x80
 
-	mov REG_CCAP0H,a
-	cpl a
-	mov REG_CCAP1H,a
+	mov	dptr,#REG_PWMA_CCR2H
+	mov a,r5
+	movx	@dptr,a
+	mov	dptr,#REG_PWMA_CCR2L
+	mov a,r4
+	movx	@dptr,a
+
+
+	;mov REG_CCAP0H,a
+	;cpl a
+	;mov REG_CCAP1H,a

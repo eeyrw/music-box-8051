@@ -1,5 +1,8 @@
 .include "WaveTable.inc"
 
+DEBUG_SYNTH=0
+USE_LINEAR_INTEROP=1
+
 ENVELOP_LEN=256
 POLY_NUM=8
 

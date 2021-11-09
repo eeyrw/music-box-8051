@@ -154,10 +154,9 @@ CLIP_LOWER=-128
 	mov	r4,#(CLIP_LOWER&0xFF)
 	mov	r5,#(CLIP_LOWER>>8)
 00107$:
-	mov a,r4
 
-	
 	; a = a - (-CLIP_LOWER)
+	mov a,r4
 	clr c
 	subb a,#(CLIP_LOWER&0xFF)
 	mov r4,a

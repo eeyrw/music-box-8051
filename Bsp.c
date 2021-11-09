@@ -133,16 +133,17 @@ void HardwareInit(void)
     PWMA_OC4ModeSet(CCMRn_PWM_MODE2); //设置输出比较模式
     PWMA_OC4_RelosdDisable();         //禁止输出比较的预装载
     PWMA_OC4_FastDisable();           //禁止输出比较快速功能
+    PWMA_CC4NP_LowValid();
     PWMA_CC4NE_Enable();               //开启输入捕获/比较输出
-                                      //PWMA_AutoReload(255);
+
     PWMA_ARRH = ( 256>> 8)&0xFF;
     PWMA_ARRL = 256&0xFF;
 
     PWMA_CCR2H = (256 >> 8)&0xFF;
     PWMA_CCR2L = 256&0xFF;
 
-    PWMA_CCR4H = (256 >> 8)&0x6F;
-    PWMA_CCR4L = 256&0x6F;
+    PWMA_CCR4H = (0 >> 8)&0xFF;
+    PWMA_CCR4L = 0&0xFF;
 
     PWMA_CCPCAPreloaded(0); //捕获/比较预装载控制位(该位只对具有互补输出的通道起作用)
     PWM2P_OUT_EN();

@@ -1,5 +1,6 @@
 #include "RegisterDefine.h"
 #include "Player.h"
+#include "Bsp.h"
 
 #define MAIN_Fosc 22118400UL //定义主时钟
 #define BaudRate1 115200UL   //选择波特率
@@ -16,7 +17,7 @@
 
 extern __data Player mainPlayer;
 extern __code unsigned char Score[];
-
+void ADC_Inilize(void);
 /********************* UART1中断函数************************/
 void UART1_int(void) __interrupt(UART1_VECTOR)
 {
@@ -54,6 +55,16 @@ void HardwareInit(void)
 
     P5M1 &= ~(1 << 5), P5M0 |= (1 << 5); // P5.5 推挽输出
     P55 = 0;
+
+    P1M1 &= ~(1 << 6), P1M0 |= (1 << 6); // P1.6 推挽输出
+    P16 = 1;
+
+
+    //P1M1 &= ~(1 << 7), P1M0 |= (1 << 7); // P1.7 推挽输出
+    //P17 = 1;
+
+    //P1M1 &= ~(1 << 2), P1M0 |= (1 << 2); // P1.2 推挽输出
+    //P12 = 1;
 
 #ifdef STC15F
 
@@ -107,25 +118,62 @@ void HardwareInit(void)
     TH0 = (uint8_t)((65536UL - MAIN_Fosc / 32000) >> 8);
     TL0 = (uint8_t)(65536UL - MAIN_Fosc / 32000);
 
-    CCON = 0; //初始化PCA控制寄存器
-              //PCA定时器停止
-              //清除CF标志
-              //清除模块中断标志
-    CL = 0;   //复位PCA寄存器
-    CH = 0;
-    CMOD = 0x08; //设置PCA时钟源
-                 //禁止PCA定时器溢出中断
-    // PCA_CLK_1T();
-    PCA_PWM0 = 0x00;        //PCA模块0工作于8位PWM
-    CCAP0H = CCAP0L = 0xFF; //PWM0的占空比为87.5% ((100H-20H)/100H)
-    CCAPM0 = 0x42;          //PCA模块0为8位PWM模式
+    P_SW2 |= 1 << 7; // Enable XRAM reg access
+    PWMA_PSCR = 0;
 
-    PCA_PWM1 = 0x00;        //PCA模块1工作于8位PWM
-    CCAP1H = CCAP1L = 0xFF; //PWM1的占空比为75% ((80H-20H)/80H)
-    CCAPM1 = 0x42;          //PCA模块1为8位PWM模式
+    PWMA_CCER1_Disable();             //关闭所有输入捕获/比较输出
+    PWMA_CCER2_Disable();             //关闭所有输入捕获/比较输出
+    
+    PWMA_OC2ModeSet(CCMRn_PWM_MODE2); //设置输出比较模式
+    PWMA_OC2_RelosdDisable();         //禁止输出比较的预装载
+    PWMA_OC2_FastDisable();           //禁止输出比较快速功能
+    PWMA_CC2E_Enable();               //开启输入捕获/比较输出
 
-    CR = 1; //PCA定时器开始工作
 
+    PWMA_OC4ModeSet(CCMRn_PWM_MODE2); //设置输出比较模式
+    PWMA_OC4_RelosdDisable();         //禁止输出比较的预装载
+    PWMA_OC4_FastDisable();           //禁止输出比较快速功能
+    PWMA_CC4NP_LowValid();
+    PWMA_CC4NE_Enable();               //开启输入捕获/比较输出
+
+    PWMA_ARRH = ( 256>> 8)&0xFF;
+    PWMA_ARRL = 256&0xFF;
+
+    PWMA_CCR2H = (256 >> 8)&0xFF;
+    PWMA_CCR2L = 256&0xFF;
+
+    PWMA_CCR4H = (0 >> 8)&0xFF;
+    PWMA_CCR4L = 0&0xFF;
+
+    PWMA_CCPCAPreloaded(0); //捕获/比较预装载控制位(该位只对具有互补输出的通道起作用)
+    PWM2P_OUT_EN();
+    PWM4N_OUT_EN();
+    PWMA_DeadTime(0);         //死区发生器设置
+    PWMA_BrakeOutputEnable(); //主输出使能
+    PWMA_CEN_Enable();        //使能计数器
+
+    PWM2_USE_P12P13();
+    PWM4_USE_P16P17();
+
+    // CCON = 0; //初始化PCA控制寄存器
+    //           //PCA定时器停止
+    //           //清除CF标志
+    //           //清除模块中断标志
+    // CL = 0;   //复位PCA寄存器
+    // CH = 0;
+    // CMOD = 0x08; //设置PCA时钟源
+    //              //禁止PCA定时器溢出中断
+    // // PCA_CLK_1T();
+    // PCA_PWM0 = 0x00;        //PCA模块0工作于8位PWM
+    // CCAP0H = CCAP0L = 0xFF; //PWM0的占空比为87.5% ((100H-20H)/100H)
+    // CCAPM0 = 0x42;          //PCA模块0为8位PWM模式
+
+    // PCA_PWM1 = 0x00;        //PCA模块1工作于8位PWM
+    // CCAP1H = CCAP1L = 0xFF; //PWM1的占空比为75% ((80H-20H)/80H)
+    // CCAPM1 = 0x42;          //PCA模块1为8位PWM模式
+
+    // CR = 1; //PCA定时器开始工作
+    ADC_Inilize();
     EA = 1; //允许全局中断
 }
 
@@ -137,4 +185,76 @@ void StartAudioOutput(void)
 
 void StopAudioOutput(void)
 {
+}
+
+//========================================================================
+// 函数: void	ADC_Inilize(ADC_InitTypeDef *ADCx)
+// 描述: ADC初始化程序.
+// 参数: ADCx: 结构参数,请参考adc.h里的定义.
+// 返回: none.
+// 版本: V1.0, 2012-10-22
+//========================================================================
+void ADC_Inilize(void)
+{
+    uint8_t ADC_SMPduty = 31; //ADC 模拟信号采样时间控制, 0~31（注意： SMPDUTY 一定不能设置小于 10）
+    uint8_t ADC_CsSetup = 0;  //ADC 通道选择时间控制 0(默认),1
+    uint8_t ADC_CsHold = 1;   //ADC 通道选择保持时间控制 0,1(默认),2,3
+    uint8_t ADC_Speed     = ADC_SPEED_2X1T;		//设置 ADC 工作时钟频率	ADC_SPEED_2X1T~ADC_SPEED_2X16T
+    ADCCFG = (ADCCFG & ~ADC_SPEED_2X16T) |ADC_Speed;
+
+    ADC_CONTR |= 0x80;
+    ADCCFG |= (1 << 5); //AD转换结果右对齐。
+    //ADCCFG &= ~(1<<5);	//AD转换结果左对齐。
+    //EADC = 1;			//中断允许		ENABLE,DISABLE
+    EADC = 0;
+    ADC_Priority(Priority_0); //指定中断优先级(低到高) Priority_0,Priority_1,Priority_2,Priority_3
+
+    P_SW2 |= 0x80;
+    ADCTIM = (ADC_CsSetup << 7) | (ADC_CsHold << 5) | ADC_SMPduty; //设置 ADC 内部时序，ADC采样时间建议设最大值
+    //P_SW2 &= 0x7f;
+}
+
+//========================================================================
+// 函数: uint16_t	Get_ADCResult(uint8_t channel)
+// 描述: 查询法读一次ADC结果.
+// 参数: channel: 选择要转换的ADC.
+// 返回: ADC结果.
+// 版本: V1.0, 2012-10-22
+//========================================================================
+uint16_t Get_ADCResult(uint8_t channel) //channel = 0~15
+{
+    uint16_t adc;
+    uint8_t i;
+
+    if (channel > ADC_CH15)
+        return 4096; //错误,返回4096,调用的程序判断
+    ADC_RES = 0;
+    ADC_RESL = 0;
+
+    ADC_CONTR = (ADC_CONTR & 0xf0) | ADC_START | channel;
+    //NOP(4); //对ADC_CONTR操作后要4T之后才能访问
+
+    for (i = 0; i < 250; i++) //超时
+    {
+        if (ADC_CONTR & ADC_FLAG)
+        {
+            ADC_CONTR &= ~ADC_FLAG;
+            if (ADCCFG & (1 << 5)) //转换结果右对齐。
+            {
+                adc = ((uint16_t)ADC_RES << 8) | ADC_RESL;
+            }
+            else //转换结果左对齐。
+            {
+#if ADC_RES_12BIT == 1
+                adc = (uint16_t)ADC_RES;
+                adc = (adc << 4) | ((ADC_RESL >> 4) & 0x0f);
+#else
+                adc = (uint16_t)ADC_RES;
+                adc = (adc << 2) | ((ADC_RESL >> 6) & 0x03);
+#endif
+            }
+            return adc;
+        }
+    }
+    return 4096; //错误,返回4096,调用的程序判断
 }

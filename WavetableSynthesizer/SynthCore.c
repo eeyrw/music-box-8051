@@ -15,11 +15,12 @@ void SynthInit(Synthesizer *synth)
 		soundUnionList[i].combine.increment = 0;
 		soundUnionList[i].combine.wavetablePos_frac = 0;
 		soundUnionList[i].combine.wavetablePos_int = 0;
-		soundUnionList[i].combine.envelopeLevel = 255;
+		soundUnionList[i].combine.envelopeLevel = 0;
 		soundUnionList[i].combine.envelopePos = 0;
 		soundUnionList[i].combine.val = 0;
 	}
 	synth->lastSoundUnit = 0;
+	synth->mixOut = 0;
 }
 #ifdef RUN_TEST
 void NoteOnAsmP(uint8_t note)

@@ -1,0 +1,15 @@
+{
+    "files.associations": {
+        "stc15f_sdcc.h": "c",
+        "periodtimer.h": "c",
+        "synthcore.h": "c",
+        "stdint.h": "c",
+        "wavetable.h": "c",
+        "stdio.h": "c",
+        "envelopetable.h": "c",
+        "player.h": "c",
+        "bsp.h": "c",
+        "registerdefine.h": "c",
+        "stc8xxxx_sdcc.h": "c"
+    }
+}

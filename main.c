@@ -8,16 +8,19 @@ extern void TestProcess(void);
 extern __code unsigned char Score[];
 extern __data Player mainPlayer;
 
-int16_t abs(int16_t n)
+void VisualizeSound(void)
 {
-	if(n<0)
-		return -n;
-	else
-		return n;
+	int16_t t;
+	t = synthForAsm.mixOut;
+	if (t < 0)
+		t = -t;
+	t = t << 1;
+	PWMA_CCR4H = (t >> 8) & 0xff;
+	PWMA_CCR4L = t & 0xff;
 }
 void main()
 {
-	int16_t t;
+
 	PlayerInit(&mainPlayer, &synthForAsm);
 	HardwareInit();
 #ifndef RUN_TEST
@@ -29,8 +32,6 @@ void main()
 	while (1)
 	{
 		PlayerProcess(&mainPlayer);
-		t = abs(synthForAsm.mixOut)<<1;
-		PWMA_CCR4H=(t>>8)&0xff;
-		PWMA_CCR4L=t&0xff;
+		VisualizeSound();
 	}
 }

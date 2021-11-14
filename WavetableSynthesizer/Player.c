@@ -22,7 +22,6 @@ void PlayerProcess(Player *player)
 {
 
     uint8_t temp;
-
     if (decayGenTick >= DECAY_TIME_FACTOR)
     {
         GenDecayEnvlopeAsm();
@@ -50,7 +49,8 @@ void PlayerProcess(Player *player)
                     putchar(temp);
                 }
             } while ((temp & 0x80) == 0);
-            PlayUpdateNextScoreTickP(player);
+            if (player->status == STATUS_PLAYING)
+                PlayUpdateNextScoreTickP(player);
         }
     }
 }

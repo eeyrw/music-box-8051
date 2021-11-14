@@ -18,9 +18,11 @@ void SynthInit(Synthesizer *synth)
 		soundUnionList[i].combine.envelopeLevel = 0;
 		soundUnionList[i].combine.envelopePos = 0;
 		soundUnionList[i].combine.val = 0;
+		soundUnionList[i].combine.tick = 0;
 	}
 	synth->lastSoundUnit = 0;
 	synth->mixOut = 0;
+	synth->tempTick = 0;
 }
 #ifdef RUN_TEST
 void NoteOnAsmP(uint8_t note)
@@ -33,6 +35,7 @@ void NoteOnAsmP(uint8_t note)
 	synthForAsm.SoundUnitUnionList[lastSoundUnit].combine.wavetablePos_int = 0;
 	synthForAsm.SoundUnitUnionList[lastSoundUnit].combine.envelopePos = 0;
 	synthForAsm.SoundUnitUnionList[lastSoundUnit].combine.envelopeLevel = 255;
+	synthForAsm.SoundUnitUnionList[lastSoundUnit].combine.combine.tick = 0;
 	// enable_interrupts();
 
 	lastSoundUnit++;
@@ -67,6 +70,7 @@ void NoteOnC(uint8_t note)
 	synthForC.SoundUnitUnionList[lastSoundUnit].combine.wavetablePos_int = 0;
 	synthForC.SoundUnitUnionList[lastSoundUnit].combine.envelopePos = 0;
 	synthForC.SoundUnitUnionList[lastSoundUnit].combine.envelopeLevel = 255;
+	synthForC.SoundUnitUnionList[lastSoundUnit].combine.combine.tick = 0;
 	// enable_interrupts();
 
 	lastSoundUnit++;

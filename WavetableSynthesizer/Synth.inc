@@ -6,12 +6,25 @@ _SynthAsm:
 
 	; r4,r5,r6,r7 : temporary registers
 
-.irp  Idx,0,1,2,3,4,5,6,7
+.irp  Idx,0,1,2,3,4,5,6
 
 	pSndUnit = pSynth+Idx*unitSz
 	mov a, (pSndUnit+pEnvelopeLevel)
 	mov r4,a
-	jz soundUnitProcessEnd'Idx'$
+	jnz skipUnitEnd'Idx'$
+	ljmp soundUnitProcessEnd'Idx'$
+	skipUnitEnd'Idx'$:
+	
+	mov a,(pSynth+pTempTick)
+	jnz tickAccEnd'Idx'$
+	mov a,(pSndUnit+pTick_l)
+	add a,#1
+	mov (pSndUnit+pTick_l),a
+	mov a,(pSndUnit+pTick_h)
+	addc a,#0
+	mov (pSndUnit+pTick_h),a
+	tickAccEnd'Idx'$:
+
 
 	mov dpl, (pSndUnit+pWavetablePos_int_l)
 	mov a,(pSndUnit+pWavetablePos_int_h)
@@ -117,6 +130,7 @@ _SynthAsm:
 
 .endm
 
+	inc (pSynth+pTempTick)
 	mov r4,(pSynth+pMixOut_l)
 	mov r5,(pSynth+pMixOut_h)
 

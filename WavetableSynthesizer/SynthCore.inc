@@ -4,7 +4,7 @@ DEBUG_SYNTH=0
 USE_LINEAR_INTEROP=1
 
 ENVELOP_LEN=256
-POLY_NUM=8
+POLY_NUM=7
 
 
 DECAY_TIME_FACTOR=100
@@ -20,6 +20,7 @@ DECAY_TIME_FACTOR=100
 ;	uint8_t envelopePos;
 ;	int16_t val;
 ;	int8_t sampleVal;
+;   uint16_t tick;
 ;} SoundUnit;
 
 
@@ -28,9 +29,10 @@ DECAY_TIME_FACTOR=100
 ;    SoundUnitUnion SoundUnitUnionList[POLY_NUM];
 ;	 int16_t mixOut;
 ;    uint8_t lastSoundUnit;
+;    uint8_t tempTick;
 ;}Synthesizer;
 
-unitSz=10
+
 
 pIncrement_int=1
 pIncrement_frac=0
@@ -42,11 +44,15 @@ pEnvelopePos=6
 pVal_l=7
 pVal_h=8
 pSampleVal=9
+pTick_l=10
+pTick_h=11
+unitSz=(pTick_h+1)
 
 pMixOut_l=unitSz*POLY_NUM
 pMixOut_h=unitSz*POLY_NUM+1
 pLastSoundUnit=unitSz*POLY_NUM+2
+pTempTick=unitSz*POLY_NUM+3
 
-SynthAbsAddr = 0x10+11+6
-SynthTotalSize = unitSz*POLY_NUM+3
+SynthAbsAddr = 0x10+11+7
+SynthTotalSize = unitSz*POLY_NUM+4
 

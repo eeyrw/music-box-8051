@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include "EnvelopeTable.h"
 
-#define POLY_NUM 8
-#define DECAY_TIME_FACTOR 100
+#define POLY_NUM 7
+#define DECAY_TIME_FACTOR 200
 
 typedef struct _SoundUnit
 {
@@ -16,6 +16,7 @@ typedef struct _SoundUnit
 	uint8_t envelopePos;
 	int16_t val;
 	int8_t sampleVal;
+	uint16_t tick;
 } SoundUnit;
 
 typedef struct _SoundUnitSplit
@@ -28,6 +29,7 @@ typedef struct _SoundUnitSplit
 	uint8_t envelopePos;
 	int16_t val;
 	int8_t sampleVal;
+	uint16_t tick;
 } SoundUnitSplit;
 
 typedef union _SoundUnitUnion
@@ -41,6 +43,7 @@ typedef struct _Synthesizer
 	SoundUnitUnion SoundUnitUnionList[POLY_NUM];
 	int16_t mixOut;
 	uint8_t lastSoundUnit;
+	uint8_t tempTick;
 } Synthesizer;
 
 extern void SynthInit(Synthesizer *synth);

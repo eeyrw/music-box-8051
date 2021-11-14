@@ -27,16 +27,16 @@ _GenDecayEnvlopeAsm:
 
 envelopUpdateEnd$:	
 						
-
+ENVELOP_START_TIME_TICK=125*1/30
 
 pSynth = SynthAbsAddr
-.irp  Idx,0,1,2,3,4,5,6,7
+.irp  Idx,0,1,2,3,4,5,6
 	pSndUnit = pSynth+Idx*unitSz
-	mov a, (pSndUnit+pWavetablePos_int_l)
+	mov a, (pSndUnit+pTick_l)
 	clr c
-	subb a,#WAVETABLE_ATTACK_LEN
-	mov a, (pSndUnit+pWavetablePos_int_h)
-	subb a,#(WAVETABLE_ATTACK_LEN>>8)
+	subb a,#ENVELOP_START_TIME_TICK
+	mov a, (pSndUnit+pTick_h)
+	subb a,#(ENVELOP_START_TIME_TICK>>8)
 	jc 	loopGenDecayEnvlope_end'Idx'$
 	mov a,(pSndUnit+pEnvelopePos)
 	clr c
@@ -71,6 +71,7 @@ _NoteOnAsm:
 	;	synth->SoundUnitUnionList[lastSoundUnit].combine.wavetablePos_int = 0;
 	;	synth->SoundUnitUnionList[lastSoundUnit].combine.envelopePos = 0;
 	;	synth->SoundUnitUnionList[lastSoundUnit].combine.envelopeLevel = 255;
+	;	synth->SoundUnitUnionList[lastSoundUnit].combine.combine.tick = 0;
 	;	enable_interrupts();
 
 	;	lastSoundUnit++;
@@ -127,7 +128,12 @@ _NoteOnAsm:
 	mov r1,a
 	mov @r1,#0
 
-	mov a,#pEnvelopePos
+	mov a,#pTick_l
+	add a,r0
+	mov r1,a
+	mov @r1,#0
+
+	mov a,#pTick_h
 	add a,r0
 	mov r1,a
 	mov @r1,#0

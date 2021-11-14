@@ -5,7 +5,7 @@
 #include "EnvelopeTable.h"
 
 #define POLY_NUM 7
-#define DECAY_TIME_FACTOR 200
+#define DECAY_TIME_FACTOR 250
 
 typedef struct _SoundUnit
 {

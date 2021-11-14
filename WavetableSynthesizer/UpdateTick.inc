@@ -29,7 +29,7 @@ _UpdateTick:
     mov (_currentTick+3),a
 
     mov a,#DECAY_TIME_FACTOR
-    clr cy
+    clr c
     subb a,_decayGenTick
     jc updateDecayGenTickEnd$
     inc _decayGenTick

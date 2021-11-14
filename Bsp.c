@@ -35,6 +35,10 @@ void UART1_int(void) __interrupt(UART1_VECTOR)
         {
             IAP_CONTR = 0x60;
         }
+        else
+        {
+            NoteOnAsm(r);
+        }
     }
 
     if (TI)

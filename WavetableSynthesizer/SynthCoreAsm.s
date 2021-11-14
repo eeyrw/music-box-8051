@@ -22,12 +22,8 @@ _GenDecayEnvlopeAsm:
 	;			soundUnionList[i].combine.envelopePos += 1;
 	;		}
 	;	}
-
-
-
-envelopUpdateEnd$:	
-						
-ENVELOP_START_TIME_TICK=125*1/30
+					
+ENVELOP_START_TIME_TICK=125*1/20
 
 pSynth = SynthAbsAddr
 .irp  Idx,0,1,2,3,4,5,6
@@ -56,8 +52,6 @@ pSynth = SynthAbsAddr
 
 	loopGenDecayEnvlope_end'Idx'$:
 .endm
-
-
 ret
 
 _NoteOnAsm:

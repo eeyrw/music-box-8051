@@ -7,7 +7,7 @@ ENVELOP_LEN=256
 POLY_NUM=7
 
 
-DECAY_TIME_FACTOR=100
+DECAY_TIME_FACTOR=250
 
 
 ;typedef struct _SoundUnit

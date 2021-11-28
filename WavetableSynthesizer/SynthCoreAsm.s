@@ -23,7 +23,7 @@ _GenDecayEnvlopeAsm:
 	;		}
 	;	}
 					
-ENVELOP_START_TIME_TICK=125*1/20
+ENVELOP_START_TIME_TICK=125*1/125
 
 pSynth = SynthAbsAddr
 .irp  Idx,0,1,2,3,4,5,6

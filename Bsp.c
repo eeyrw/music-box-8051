@@ -29,7 +29,7 @@ void UART1_int(void) __interrupt(UART1_VECTOR)
         uint8_t r = SBUF;
         if (r == 0xFF)
         {
-            PlayerPlay(&mainPlayer, Score);
+            //PlayerPlay(&mainPlayer, Score);
         }
         else if (r == 0xDD)
         {

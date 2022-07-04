@@ -53,11 +53,10 @@ SRC 	+= UartRedirect.c
 SRC 	+= Bsp.c
 SRC 	+= WavetableSynthesizer/WaveTable.c
 SRC 	+= WavetableSynthesizer/EnvelopTable.c
-SRC 	+= WavetableSynthesizer/score.c
+SRC 	+= WavetableSynthesizer/scoreList.c
 
 ASM_SRC =
 ASM_SRC   += WavetableSynthesizer/PeriodTimer.s
-ASM_SRC   += WavetableSynthesizer/PlayerUtil.s
 ASM_SRC   += WavetableSynthesizer/SynthCoreAsm.s
 
 # ASM_SRC   += WavetableSynthesizer/Synth_testbench.s

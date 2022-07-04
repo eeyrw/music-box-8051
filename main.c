@@ -6,7 +6,9 @@
 
 extern void TestProcess(void);
 extern __code unsigned char Score[];
-extern __data Player mainPlayer;
+Player xmainPlayer;
+
+//__code ScoreListHeader ScoreDataList;
 
 void VisualizeSound(void)
 {
@@ -19,19 +21,19 @@ void VisualizeSound(void)
 	PWMA_CCR4L = t & 0xff;
 }
 void main()
-{
-
-	PlayerInit(&mainPlayer, &synthForAsm);
+{   
+	
 	HardwareInit();
+	PlayerInit(&xmainPlayer, &synthForAsm);
 #ifndef RUN_TEST
-	PlayerPlay(&mainPlayer, Score);
+	StartPlayScheduler(&xmainPlayer);
 	StartAudioOutput();
 #else
 	TestProcess();
 #endif
 	while (1)
 	{
-		PlayerProcess(&mainPlayer);
+		PlayerProcess(&xmainPlayer);
 		VisualizeSound();
 	}
 }

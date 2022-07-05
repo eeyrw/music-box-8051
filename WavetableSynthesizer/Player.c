@@ -184,6 +184,5 @@ void PlayerInit(Player *player, Synthesizer *synthesizer)
     currentTick = 0;
     player->decoder.lastScoreTick = 0;
     player->decoder.scorePointer = NULL;
-    player->synthesizerPtr = synthesizer;
-    SynthInit(player->synthesizerPtr);
+    SynthInit(synthesizer);
 }

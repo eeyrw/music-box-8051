@@ -54,7 +54,6 @@ typedef struct _Player
 {
     ScoreDecoder decoder;
     PlayScheduler scheduler;
-    Synthesizer *synthesizerPtr;
 } Player;
 
 

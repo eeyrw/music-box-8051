@@ -5,17 +5,17 @@
 #define MAIN_Fosc 22118400UL //定义主时钟
 #define BaudRate1 115200UL   //选择波特率
 
-#define Timer2_Reload (65536UL - (MAIN_Fosc / 4 / BaudRate1)) //Timer 2 重装值， 对应300KHZ
+#define Timer2_Reload (65536UL - (MAIN_Fosc / 4 / BaudRate1)) // Timer 2 重装值， 对应300KHZ
 
 #define OUTPUT_PIN 5
 
-#define MEASURE_S //PB_ODR |= (1 << OUTPUT_PIN)
-#define MEASURE_E //PB_ODR &= ~(1 << OUTPUT_PIN)
+#define MEASURE_S // PB_ODR |= (1 << OUTPUT_PIN)
+#define MEASURE_E // PB_ODR &= ~(1 << OUTPUT_PIN)
 
-#define CCP_S0 0x10 //P_SW1.4
-#define CCP_S1 0x20 //P_SW1.5
+#define CCP_S0 0x10 // P_SW1.4
+#define CCP_S1 0x20 // P_SW1.5
 
-extern __data Player mainPlayer;
+extern Player mainPlayer;
 extern __code unsigned char Score[];
 void ADC_Inilize(void);
 /********************* UART1中断函数************************/
@@ -24,12 +24,22 @@ void UART1_int(void) __interrupt(UART1_VECTOR)
     if (RI)
     {
         RI = 0;
-        //RX1_Buffer[RX1_Cnt] = SBUF; //保存一个字节
-        //NoteOnAsm(SBUF);
+        // RX1_Buffer[RX1_Cnt] = SBUF; //保存一个字节
+        // NoteOnAsm(SBUF);
         uint8_t r = SBUF;
         if (r == 0xFF)
         {
-            //PlayerPlay(&mainPlayer, Score);
+            // PlayerPlay(&mainPlayer, Score);
+        }
+        else if (r == 0xFE)
+        {
+            // PlayerPlay(&mainPlayer, Score);
+            PlaySchedulerPreviousScore(&mainPlayer);
+        }
+        else if (r == 0xFD)
+        {
+            // PlayerPlay(&mainPlayer, Score);
+            PlaySchedulerNextScore(&mainPlayer);
         }
         else if (r == 0xDD)
         {
@@ -43,7 +53,7 @@ void UART1_int(void) __interrupt(UART1_VECTOR)
 
     if (TI)
     {
-        //TI = 0;
+        // TI = 0;
     }
 }
 
@@ -63,35 +73,34 @@ void HardwareInit(void)
     P1M1 &= ~(1 << 6), P1M0 |= (1 << 6); // P1.6 推挽输出
     P16 = 1;
 
+    // P1M1 &= ~(1 << 7), P1M0 |= (1 << 7); // P1.7 推挽输出
+    // P17 = 1;
 
-    //P1M1 &= ~(1 << 7), P1M0 |= (1 << 7); // P1.7 推挽输出
-    //P17 = 1;
-
-    //P1M1 &= ~(1 << 2), P1M0 |= (1 << 2); // P1.2 推挽输出
-    //P12 = 1;
+    // P1M1 &= ~(1 << 2), P1M0 |= (1 << 2); // P1.2 推挽输出
+    // P12 = 1;
 
 #ifdef STC15F
 
     S1_8bit();
-    S1_USE_P30P31(); //UART1 使用P30 P31口	默认
+    S1_USE_P30P31(); // UART1 使用P30 P31口	默认
                      //	S1_USE_P36P37();		//UART1 使用P36 P37口
                      //	S1_USE_P16P17();		//UART1 使用P16 P17口
 
     /*
-	TR1 = 0;			//波特率使用Timer1产生
-	AUXR &= ~0x01;		//S1 BRT Use Timer1;
-	AUXR |=  (1<<6);	//Timer1 set as 1T mode
-	TH1 = (uint8_t)(Timer1_Reload >> 8);
-	TL1 = (uint8_t)Timer1_Reload;
-	TR1  = 1;
+    TR1 = 0;			//波特率使用Timer1产生
+    AUXR &= ~0x01;		//S1 BRT Use Timer1;
+    AUXR |=  (1<<6);	//Timer1 set as 1T mode
+    TH1 = (uint8_t)(Timer1_Reload >> 8);
+    TL1 = (uint8_t)Timer1_Reload;
+    TR1  = 1;
 */
 
-    AUXR &= ~(1 << 4); //Timer stop		波特率使用Timer2产生
-    AUXR |= 0x01;      //S1 BRT Use Timer2;
-    AUXR |= (1 << 2);  //Timer2 set as 1T mode
+    AUXR &= ~(1 << 4); // Timer stop		波特率使用Timer2产生
+    AUXR |= 0x01;      // S1 BRT Use Timer2;
+    AUXR |= (1 << 2);  // Timer2 set as 1T mode
     TH2 = (uint8_t)(Timer2_Reload >> 8);
     TL2 = (uint8_t)Timer2_Reload;
-    AUXR |= (1 << 4); //Timer run enable
+    AUXR |= (1 << 4); // Timer run enable
     REN = 1;          //允许接收
 
     ES = 1; //允许串口中断
@@ -115,7 +124,7 @@ void HardwareInit(void)
     PT0 = 1;                   //高优先级中断
     TMOD = (TMOD & ~0x03) | 0; //工作模式,0: 16位自动重装, 1: 16位定时/计数, 2: 8位自动重装, 3: 16位自动重装, 不可屏蔽中断
     // AUXR &= ~0x80;	//12T
-    AUXR |= 0x80;      //1T
+    AUXR |= 0x80;      // 1T
     TMOD &= ~0x04;     //定时
     INT_CLKO &= ~0x01; //不输出时钟
 
@@ -125,29 +134,28 @@ void HardwareInit(void)
     P_SW2 |= 1 << 7; // Enable XRAM reg access
     PWMA_PSCR = 0;
 
-    PWMA_CCER1_Disable();             //关闭所有输入捕获/比较输出
-    PWMA_CCER2_Disable();             //关闭所有输入捕获/比较输出
-    
+    PWMA_CCER1_Disable(); //关闭所有输入捕获/比较输出
+    PWMA_CCER2_Disable(); //关闭所有输入捕获/比较输出
+
     PWMA_OC2ModeSet(CCMRn_PWM_MODE2); //设置输出比较模式
     PWMA_OC2_RelosdDisable();         //禁止输出比较的预装载
     PWMA_OC2_FastDisable();           //禁止输出比较快速功能
     PWMA_CC2E_Enable();               //开启输入捕获/比较输出
 
-
     PWMA_OC4ModeSet(CCMRn_PWM_MODE2); //设置输出比较模式
     PWMA_OC4_RelosdDisable();         //禁止输出比较的预装载
     PWMA_OC4_FastDisable();           //禁止输出比较快速功能
     PWMA_CC4NP_LowValid();
-    PWMA_CC4NE_Enable();               //开启输入捕获/比较输出
+    PWMA_CC4NE_Enable(); //开启输入捕获/比较输出
 
-    PWMA_ARRH = ( 256>> 8)&0xFF;
-    PWMA_ARRL = 256&0xFF;
+    PWMA_ARRH = (256 >> 8) & 0xFF;
+    PWMA_ARRL = 256 & 0xFF;
 
-    PWMA_CCR2H = (256 >> 8)&0xFF;
-    PWMA_CCR2L = 256&0xFF;
+    PWMA_CCR2H = (256 >> 8) & 0xFF;
+    PWMA_CCR2L = 256 & 0xFF;
 
-    PWMA_CCR4H = (0 >> 8)&0xFF;
-    PWMA_CCR4L = 0&0xFF;
+    PWMA_CCR4H = (0 >> 8) & 0xFF;
+    PWMA_CCR4L = 0 & 0xFF;
 
     PWMA_CCPCAPreloaded(0); //捕获/比较预装载控制位(该位只对具有互补输出的通道起作用)
     PWM2P_OUT_EN();
@@ -200,22 +208,22 @@ void StopAudioOutput(void)
 //========================================================================
 void ADC_Inilize(void)
 {
-    uint8_t ADC_SMPduty = 31; //ADC 模拟信号采样时间控制, 0~31（注意： SMPDUTY 一定不能设置小于 10）
-    uint8_t ADC_CsSetup = 0;  //ADC 通道选择时间控制 0(默认),1
-    uint8_t ADC_CsHold = 1;   //ADC 通道选择保持时间控制 0,1(默认),2,3
-    uint8_t ADC_Speed     = ADC_SPEED_2X1T;		//设置 ADC 工作时钟频率	ADC_SPEED_2X1T~ADC_SPEED_2X16T
-    ADCCFG = (ADCCFG & ~ADC_SPEED_2X16T) |ADC_Speed;
+    uint8_t ADC_SMPduty = 31;           // ADC 模拟信号采样时间控制, 0~31（注意： SMPDUTY 一定不能设置小于 10）
+    uint8_t ADC_CsSetup = 0;            // ADC 通道选择时间控制 0(默认),1
+    uint8_t ADC_CsHold = 1;             // ADC 通道选择保持时间控制 0,1(默认),2,3
+    uint8_t ADC_Speed = ADC_SPEED_2X1T; //设置 ADC 工作时钟频率	ADC_SPEED_2X1T~ADC_SPEED_2X16T
+    ADCCFG = (ADCCFG & ~ADC_SPEED_2X16T) | ADC_Speed;
 
     ADC_CONTR |= 0x80;
-    ADCCFG |= (1 << 5); //AD转换结果右对齐。
-    //ADCCFG &= ~(1<<5);	//AD转换结果左对齐。
-    //EADC = 1;			//中断允许		ENABLE,DISABLE
+    ADCCFG |= (1 << 5); // AD转换结果右对齐。
+    // ADCCFG &= ~(1<<5);	//AD转换结果左对齐。
+    // EADC = 1;			//中断允许		ENABLE,DISABLE
     EADC = 0;
     ADC_Priority(Priority_0); //指定中断优先级(低到高) Priority_0,Priority_1,Priority_2,Priority_3
 
     P_SW2 |= 0x80;
     ADCTIM = (ADC_CsSetup << 7) | (ADC_CsHold << 5) | ADC_SMPduty; //设置 ADC 内部时序，ADC采样时间建议设最大值
-    //P_SW2 &= 0x7f;
+    // P_SW2 &= 0x7f;
 }
 
 //========================================================================
@@ -225,7 +233,7 @@ void ADC_Inilize(void)
 // 返回: ADC结果.
 // 版本: V1.0, 2012-10-22
 //========================================================================
-uint16_t Get_ADCResult(uint8_t channel) //channel = 0~15
+uint16_t Get_ADCResult(uint8_t channel) // channel = 0~15
 {
     uint16_t adc;
     uint8_t i;
@@ -236,7 +244,7 @@ uint16_t Get_ADCResult(uint8_t channel) //channel = 0~15
     ADC_RESL = 0;
 
     ADC_CONTR = (ADC_CONTR & 0xf0) | ADC_START | channel;
-    //NOP(4); //对ADC_CONTR操作后要4T之后才能访问
+    // NOP(4); //对ADC_CONTR操作后要4T之后才能访问
 
     for (i = 0; i < 250; i++) //超时
     {

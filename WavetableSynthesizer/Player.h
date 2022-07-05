@@ -72,6 +72,4 @@ extern void SchedulerSetIntialRandomSeed(Player *player, uint8_t randomSeed);
 extern void UpdateTick(ScoreDecoder *decoder);
 extern void UpdateNextScoreTick(ScoreDecoder *decoder);
 
-extern __data Player mainPlayer;
-
 #endif

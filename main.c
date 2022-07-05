@@ -6,7 +6,7 @@
 
 extern void TestProcess(void);
 extern __code unsigned char Score[];
-Player xmainPlayer;
+Player mainPlayer;
 
 //__code ScoreListHeader ScoreDataList;
 
@@ -24,16 +24,16 @@ void main()
 {   
 	
 	HardwareInit();
-	PlayerInit(&xmainPlayer, &synthForAsm);
+	PlayerInit(&mainPlayer, &synthForAsm);
 #ifndef RUN_TEST
-	StartPlayScheduler(&xmainPlayer);
+	StartPlayScheduler(&mainPlayer);
 	StartAudioOutput();
 #else
 	TestProcess();
 #endif
 	while (1)
 	{
-		PlayerProcess(&xmainPlayer);
+		PlayerProcess(&mainPlayer);
 		VisualizeSound();
 	}
 }

@@ -270,3 +270,20 @@ uint16_t Get_ADCResult(uint8_t channel) // channel = 0~15
     }
     return 4096; //错误,返回4096,调用的程序判断
 }
+
+uint8_t GetRandom(void)
+{
+  uint8_t random = 0;
+  for (int i = 0; i < 3; i++)
+  {
+    random |= ((Get_ADCResult(ADC_CH0) & 0x07) << (i * 3));
+  }
+  return random;
+}
+#define IDL             0x01                    //PCON.0
+#define PD              0x02                    //PCON.1
+void IntoPowerDown(void)
+{
+    PCON = PD;                                  //MCU进入掉电模式
+    IAP_CONTR = 0x20; //Reset MCU after wake up
+}

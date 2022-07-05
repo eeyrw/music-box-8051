@@ -61,6 +61,8 @@
 void HardwareInit(void);
 void StartAudioOutput(void);
 void StopAudioOutput(void);
+uint8_t GetRandom(void);
+void IntoPowerDown(void);
 
 // These declaration must be included in main.c to generate ljmp in vector table.
 extern void timer_isr() __interrupt(TIMER0_VECTOR) __using(1);

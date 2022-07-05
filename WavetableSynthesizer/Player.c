@@ -4,10 +4,11 @@
 #include "SynthCore.h"
 #include "Player.h"
 #include "RegisterDefine.h"
+#include "Bsp.h"
 
 __code extern unsigned char Score[];
 
-__code ScoreListHeader* ScoreDataListPtr=(__code ScoreListHeader*)Score;
+__code ScoreListHeader *ScoreDataListPtr = (__code ScoreListHeader *)Score;
 
 void ScoreDecodeProcess(Player *player)
 {
@@ -62,6 +63,7 @@ __code uint8_t *GetScorePhyiscalAddr(uint32_t addr)
 void PlaySchedulerProcess(Player *player)
 {
     __code uint32_t *ScoreList = (&(player->scheduler.scoreListHeader)->firstAddr);
+    static uint8_t hasPlay = 0;
 
     switch (player->scheduler.status)
     {
@@ -79,31 +81,50 @@ void PlaySchedulerProcess(Player *player)
         break;
 
     case SCHEDULER_SCORE_PREV:
-        player->scheduler.currentScoreIndex--;
-        if (player->scheduler.currentScoreIndex < 0)
-            player->scheduler.currentScoreIndex = player->scheduler.maxScoreNum - 1;
-        PlayScore(player, GetScorePhyiscalAddr(ScoreList[player->scheduler.currentScoreIndex]));
-        player->scheduler.status = SCHEDULER_READY_TO_SWITCH;
+        if (hasPlay == 1 && player->scheduler.schedulerMode == MODE_ONE_SHOT_PLAY)
+        {
+            player->scheduler.switchDirect = SCHEDULER_STOP;
+            player->scheduler.status = SCHEDULER_SWITCHING;
+        }
+        else
+        {
+            player->scheduler.currentScoreIndex--;
+            if (player->scheduler.currentScoreIndex < 0)
+                player->scheduler.currentScoreIndex = player->scheduler.maxScoreNum - 1;
+            PlayScore(player, GetScorePhyiscalAddr(ScoreList[player->scheduler.currentScoreIndex]));
+            player->scheduler.status = SCHEDULER_READY_TO_SWITCH;
+            hasPlay = 1;
+        }
 
         break;
 
     case SCHEDULER_SCORE_NEXT:
-        player->scheduler.currentScoreIndex++;
-        if (player->scheduler.currentScoreIndex >= player->scheduler.maxScoreNum)
+        if (hasPlay == 1 && player->scheduler.schedulerMode == MODE_ONE_SHOT_PLAY)
         {
-            player->scheduler.status = SCHEDULER_STOP;
-            player->scheduler.currentScoreIndex = -1;
+            player->scheduler.switchDirect = SCHEDULER_STOP;
+            player->scheduler.status = SCHEDULER_SWITCHING;
         }
         else
         {
-            PlayScore(player, GetScorePhyiscalAddr(ScoreList[player->scheduler.currentScoreIndex]));
-            player->scheduler.status = SCHEDULER_READY_TO_SWITCH;
+            player->scheduler.currentScoreIndex++;
+            if (player->scheduler.currentScoreIndex >= player->scheduler.maxScoreNum)
+            {
+                player->scheduler.status = SCHEDULER_STOP;
+                player->scheduler.currentScoreIndex = -1;
+            }
+            else
+            {
+                PlayScore(player, GetScorePhyiscalAddr(ScoreList[player->scheduler.currentScoreIndex]));
+                player->scheduler.status = SCHEDULER_READY_TO_SWITCH;
+            }
+            hasPlay = 1;
         }
 
         break;
 
     case SCHEDULER_STOP:
         /* Do nothing */
+        IntoPowerDown();
         break;
     default:
         break;
@@ -134,7 +155,7 @@ void StartPlayScheduler(Player *player)
         player->scheduler.scoreListHeader = ScoreDataListPtr;
         player->scheduler.currentScoreIndex = -1;
         player->scheduler.maxScoreNum = (player->scheduler.scoreListHeader)->scoreCount;
-        player->scheduler.schedulerMode = MODE_ORDER_PLAY;
+        player->scheduler.schedulerMode = MODE_ONE_SHOT_PLAY;
         player->scheduler.status = SCHEDULER_READY_TO_SWITCH;
     }
     else

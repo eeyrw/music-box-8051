@@ -21,18 +21,21 @@ void VisualizeSound(void)
 	PWMA_CCR4L = t & 0xff;
 }
 void main()
-{   
-	
+{
+
 	HardwareInit();
 	PlayerInit(&mainPlayer, &synthForAsm);
 #ifndef RUN_TEST
+	uint8_t rd = GetRandom();
 	StartPlayScheduler(&mainPlayer);
+	SchedulerSetIntialRandomSeed(&mainPlayer, rd);
 	StartAudioOutput();
 #else
 	TestProcess();
 #endif
 	while (1)
 	{
+
 		PlayerProcess(&mainPlayer);
 		VisualizeSound();
 	}

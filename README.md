@@ -1,6 +1,6 @@
 # Music Box 8051
 
-An 8-voice polyphonic wavetable synthesizer running on an STC8H3K64S2 microcontroller (8051-compatible). Plays "La Valse d'Amélie" from flash ROM, driving audio output through a PWM DAC and a visualization LED/galvo via a second PWM channel.
+An 8-voice polyphonic wavetable synthesizer running on an STC8H3K64S2 microcontroller (8051-compatible). Plays 5 musical pieces from flash ROM in sequence, driving audio output through a PWM DAC and a visualization LED/galvo via a second PWM channel.
 
 ## Hardware
 
@@ -66,11 +66,12 @@ make flash STCGAL_PORT=/dev/ttyUSB1 STCGAL_PROTO=stc8h
                     └─────────────────────────┘
                               ↕ mixOut
                     ┌─────────────────────────┐
-                    │  Main Loop (Bank 0)     │
-                    │  · PlayerProcess()      │
-                    │    - Score sequencing   │
-                    │    - NoteOn/deacy       │──→ PWMA_CCR4 (P1.6/P1.7) Visual
-                    │  · VisualizeSound()     │
+                     │  Main Loop (Bank 0)     │
+                     │  · ScoreDecodeProcess() │
+                     │    - Score sequencing   │
+                     │  · PlaySchedulerProcess │──→ PWMA_CCR4 (P1.6/P1.7) Visual
+                     │    - Auto-advance/stop  │
+                     │  · VisualizeSound()     │
                     └─────────────────────────┘
 ```
 
@@ -88,11 +89,37 @@ Round-robin across 8 voices with interrupt-safe state updates. Note-on resets ph
 
 ### Score format
 
-`__code` byte array in flash. Alternating note and delta-time bytes:
-- Byte with bit 7 set (`≥ 0x80`) — note-on event (MIDI number = `byte & 0x7F`)
+Score data is stored as a `__code` byte array in flash with a "SCRE" header format:
+
+```
+Bytes 0-3:   "SCRE" magic identifier
+Bytes 4-7:   scoreCount (uint32_t, little-endian) — number of songs
+Bytes 8-11:  firstAddr  (uint32_t) — offset of first song from Score[] base
+Bytes 12+:   (scoreCount - 1) × 4 bytes — additional song address table
+```
+
+Each song's data alternates note and delta-time bytes:
+- Byte with bit 7 set (`≥ 0x80`) — note-on event (MIDI number = `byte & 0x7F`), marks end of chord group
 - Byte `< 0x80` — delta-time offset, accumulated into `lastScoreTick`
 - `0xFF` — chains with the previous delta for extended durations
-- Two consecutive `0xFF` → end of score
+- Two consecutive `0xFF` → end of song
+
+### Multi-score scheduler
+
+The player supports multiple songs via a `PlayScheduler` state machine with three modes:
+
+| Mode | Behavior |
+|------|----------|
+| `MODE_ORDER_PLAY` | Loop all songs forever |
+| `MODE_LIST_ONCE` | Play all songs once, then stop |
+| `MODE_SINGLE_SONG` | Play one song, then stop (UART can override) |
+
+On startup, a random song is selected using ADC noise as entropy. The scheduler auto-advances through the song list according to the selected mode.
+
+UART commands at 115200 baud:
+- `0xFE` — previous song
+- `0xFD` — next song
+- `0xDD` — software reset
 
 ## Verification Suite
 
@@ -128,23 +155,23 @@ The test feeds 9 notes, runs 10,000 iterations, and compares every voice field b
 │   ├── SynthCore.h                  SoundUnit/Synthesizer struct definitions
 │   ├── UpdateTick.inc               32-bit tick counter (ISR)
 │   ├── PeriodTimer.s                Timer0 ISR entry (bank switch, include Synth+UpdateTick)
-│   ├── Player.c                     Score sequencer
-│   ├── Player.h / Player.inc        Player struct + absolute addresses
-│   ├── PlayerUtil.s                 mainPlayer struct reservation + stub functions
+│   ├── Player.c                     Score decoder + multi-song scheduler
+│   ├── Player.h / Player.inc        Player struct + scheduler API
 │   ├── WaveTable.c                  Celesta C5 wavetable data (21,870 samples)
 │   ├── WaveTable.h / WaveTable.inc  Wavetable dimensions + constants
 │   ├── EnvelopTable.c               Decay envelope lookup table (256 entries)
 │   ├── EnvelopeTable.h              Envelope table declaration
 │   ├── AlgorithmTest.c              C-vs-ASM verification suite (RUN_TEST only)
-│   └── score.c                      "La Valse d'Amélie" score data (1,452 bytes)
+│   └── scoreList.c                  5-song score data with SCRE header
 ```
 
 ## Demo
 
-The included demo track is "La Valse d'Amélie" (Yann Tiersen), transcribed to MIDI and encoded for the score sequencer. Notes span MIDI 50–95.
+The included demo features 5 musical pieces stored in the SCRE multi-score format. Audio output is synthesized in real-time through the 8-voice wavetable engine and output as analog audio via the PWM DAC.
 
-UART1 at 115200 baud also accepts commands:
-- Send `0xFF` to restart playback
+UART1 at 115200 baud accepts commands:
+- Send `0xFE` to switch to the previous song
+- Send `0xFD` to switch to the next song
 - Send `0xDD` to trigger a software reset
 
 ## License

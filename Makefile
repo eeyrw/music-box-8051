@@ -128,8 +128,27 @@ endif
 	@echo [BIN] $(PROJECT_NAME).bin
 	@$(CP) -I ihex -O binary $< $@
 
-flash: $(PROJECT_NAME).hex
-	stm8flash -c stlinkv2 -p $(MCU) -w $(PROJECT_NAME).hex
+# stcgal settings (open-source STC MCU ISP tool for Linux)
+# install: pip3 install stcgal
+# https://github.com/grigorig/stcgal
+STCGAL_PORT   ?= /dev/ttyUSB0
+STCGAL_BAUD   ?= 115200
+STCGAL_PROTO  ?= stc8d
+STCGAL_BOOT_CMD ?= auto
+
+BOOT_SCRIPT = python3 tools/boot.py $(STCGAL_PORT) $(STCGAL_BAUD)
+
+boot:
+	@echo [BOOT] sending 0xDD to $(STCGAL_PORT)
+	$(BOOT_SCRIPT)
+
+flash: $(PROJECT_NAME).ihx
+	@if [ "$(STCGAL_BOOT_CMD)" != "none" ]; then \
+		echo [BOOT] sending 0xDD to $(STCGAL_PORT); \
+		$(BOOT_SCRIPT); \
+	fi
+	@echo [FLASH] $(PROJECT_NAME).ihx via stcgal
+	stcgal -P $(STCGAL_PROTO) -p $(STCGAL_PORT) -b $(STCGAL_BAUD) $<
 	
 clean:
 	@echo [RM] OBJ

@@ -28,7 +28,6 @@
 
 	.module SYNTH_CORE_ASM
 	.include "SynthCore.inc"
-	.include "Player.inc"
 	.globl _GenDecayEnvlopeAsm
 	.globl _NoteOnAsm
 	.globl _synthForAsm

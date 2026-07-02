@@ -12,11 +12,13 @@
 ; 内存布局 (DATA 段)：
 ;   0x00-0x07: 寄存器 Bank 0 (C 代码使用)
 ;   0x08-0x0F: 寄存器 Bank 1 (ISR 使用)
-;   0x10-0x1D: Player 结构体 (14 字节, Player.inc 定义)
-;   0x1E-0x20: 保留 (3 字节对齐)
+;   0x10-0x15: C 编译器自动分配的 DSEG 变量 (decayGenTick + currentTick)
+;   0x16-0x1F: 未使用 (10 字节)
+;   0x20:      位寄存器
 ;   0x21-0x73: Synthesizer 结构体 (83 字节 = 8×10 + 3)
+;   0x74-0xFF: C 栈 (140 字节)
 ;
-;   总占用: 0x10-0x73 = 100 字节，剩余 0x74-0xFF = 140 字节用于 C 栈
+;   Player 结构体 (~34 字节) 由 SDCC 分配到 XRAM, 不占用 DATA
 ;====================================================================
 
 	; ---- 引入波表常量 ----
@@ -91,7 +93,7 @@
 	pLastSoundUnit=unitSz*POLY_NUM+2  ; 下一声道编号 (82)
 
 ; ---- Synthesizer 在 DATA 内存的绝对地址 ----
-;     PlayrAbsAddr (0x10) + PlayerTotalSize (14) + 额外的 3 字节保留
-;     = 0x10 + 0x11 + 0x00 = 0x21
-	SynthAbsAddr = 0x10+11+6
+;     Player 已移至 XRAM (SDCC 自动分配), 所以此处不再依赖 PlayrAbsAddr
+;     0x21 与原版 master 一致, 紧接在 DSEG 变量之后
+	SynthAbsAddr = 0x21
 	SynthTotalSize = unitSz*POLY_NUM+3 ; 83

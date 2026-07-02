@@ -15,21 +15,23 @@
 #define CCP_S0 0x10 //P_SW1.4
 #define CCP_S1 0x20 //P_SW1.5
 
-extern __data Player mainPlayer;
-extern __code unsigned char Score[];
+extern Player mainPlayer;
 void ADC_Inilize(void);
+
 /********************* UART1中断函数************************/
 void UART1_int(void) __interrupt(UART1_VECTOR)
 {
     if (RI)
     {
         RI = 0;
-        //RX1_Buffer[RX1_Cnt] = SBUF; //保存一个字节
-        //NoteOnAsm(SBUF);
         uint8_t r = SBUF;
-        if (r == 0xFF)
+        if (r == 0xFE)
         {
-            PlayerPlay(&mainPlayer, Score);
+            PlaySchedulerPreviousScore(&mainPlayer);
+        }
+        else if (r == 0xFD)
+        {
+            PlaySchedulerNextScore(&mainPlayer);
         }
         else if (r == 0xDD)
         {
@@ -257,4 +259,20 @@ uint16_t Get_ADCResult(uint8_t channel) //channel = 0~15
         }
     }
     return 4096; //错误,返回4096,调用的程序判断
+}
+
+uint8_t GetRandom(void)
+{
+    uint8_t random = 0;
+    uint8_t i;
+    for (i = 0; i < 3; i++)
+    {
+        random |= ((Get_ADCResult(ADC_CH0) & 0x07) << (i * 3));
+    }
+    return random;
+}
+
+void IntoPowerDown(void)
+{
+    PCON |= 0x01;    // 进入 IDLE 模式 (CPU 休眠, 外设继续运行, ISR 可唤醒)
 }

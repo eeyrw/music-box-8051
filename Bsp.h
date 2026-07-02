@@ -46,7 +46,7 @@
 #define ADC_SPEED_2X7T		6			//SYSclk/2/7
 #define ADC_SPEED_2X8T		7			//SYSclk/2/8
 #define ADC_SPEED_2X9T		8			//SYSclk/2/9
-#define ADC_SPEED_2X10T		9			//SYSclk/2/10
+#define ADC_SPEED_2X10T		9		//SYSclk/2/10
 #define ADC_SPEED_2X11T		10		//SYSclk/2/11
 #define ADC_SPEED_2X12T		11		//SYSclk/2/12
 #define ADC_SPEED_2X13T		12		//SYSclk/2/13
@@ -61,6 +61,8 @@
 void HardwareInit(void);
 void StartAudioOutput(void);
 void StopAudioOutput(void);
+uint8_t GetRandom(void);
+void IntoPowerDown(void);
 
 // These declaration must be included in main.c to generate ljmp in vector table.
 extern void timer_isr() __interrupt(TIMER0_VECTOR) __using(1);

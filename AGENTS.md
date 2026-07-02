@@ -37,8 +37,8 @@ Main loop polls `PlayerProcess()` which feeds notes via `NoteOnAsm` and triggers
 
 ### Fixed memory layout (critical — do not change blindly)
 
-- **Player struct**: absolute DATA `0x10`, 11+3 bytes (`Player.inc`)
-- **Synthesizer struct**: absolute DATA `0x21` (= 0x10 + 11 + 6), 83 bytes (`SynthCore.inc`)
+- **Player struct**: SDCC auto-allocated in DATA (~34 bytes). Previously at absolute `0x10`, now compiler-placed. `PlayerUtil.s` is removed from the build.
+- **Synthesizer struct**: absolute DATA `0x40`, 83 bytes (`SynthCore.inc`, declared in `SynthCoreAsm.s` via `.org`)
 - **8 voices × 10 bytes** each: `increment_frac(0)`, `increment_int(1)`, `wavetablePos_frac(2)`, `wavetablePos_int_l(3)`, `wavetablePos_int_h(4)`, `envelopeLevel(5)`, `envelopePos(6)`, `val_l(7)`, `val_h(8)`, `sampleVal(9)`
 - ISR uses **register bank 1** (`psw = 0x08`) so R0-R7 do not conflict with C code's bank 0
 
@@ -57,11 +57,25 @@ After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), wri
 
 ### Score format
 
-`__code` data (flash). Alternating bytes:
+`__code` data (flash). Score list format: 12-byte header with "SCRE" magic + count + address table, followed by score data. Alternating bytes:
 - byte with bit 7 set (`>= 0x80`) = note-on (MIDI number = `byte & 0x7F`)
 - byte `< 0x80` = delta-time (accumulated into `lastScoreTick`)
 - `0xFF` = extended duration (chains with previous delta)
 - Two consecutive `0xFF` = end of score
+
+### Multi-score scheduler
+
+The player supports multiple songs via `PlaySchedulerProcess` state machine in `Player.c`. Score list header at start of flash:
+- Bytes 0-3: "SCRE" magic identifier
+- Bytes 4-7: `scoreCount` (uint32_t, little-endian)
+- Bytes 8-11: `firstAddr` (uint32_t, absolute offset from Score[] base)
+
+UART commands at 115200 baud:
+- `0xFE`: previous song
+- `0xFD`: next song
+- `0xDD`: software reset
+
+`MODE_ORDER_PLAY` loops through all songs; `MODE_ONE_SHOT_PLAY` stops after one play.
 
 ### Note assignment
 
@@ -78,8 +92,8 @@ SDCC's assembler cannot auto-generate dependency files. Changes to `.inc` files 
 
 ## Files with duplicates / overlaps
 
-- `score.c` exists both at repo root and in `WavetableSynthesizer/`. The Makefile compiles the `WavetableSynthesizer/` copy. The root copy is stale.
-- `PlayerUtil.s` declares the `_mainPlayer` struct at `PlayrAbsAddr` (0x10) and has **stub** implementations of `PlayNoteTimingCheck` and `PlayUpdateNextScoreTick` — the actual logic runs in `Player.c`. Do not remove `PlayerUtil.s` as it reserves the Player struct memory.
+- `score.c` existed both at repo root and in `WavetableSynthesizer/`. The Makefile now compiles `WavetableSynthesizer/scoreList.c`. Both `score.c` copies are removed.
+- `PlayerUtil.s` declared the `_mainPlayer` struct at `PlayrAbsAddr` (0x10) and had **stub** implementations of `PlayNoteTimingCheck` and `PlayUpdateNextScoreTick`. Removed from build — Player is now auto-allocated by SDCC.
 
 ## Assembly optimization opportunities
 

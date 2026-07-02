@@ -21,7 +21,7 @@ MODEL  = large
 # ------------------------------------------------------
 # Memory Layout
 # PRG Size = 32K Bytes
-CODE_SIZE = --code-loc 0x0000 --code-size 61440
+CODE_SIZE = --code-loc 0x0000 --code-size 65536
 # INT-MEM Size = 256 Bytes
 IRAM_SIZE = --idata-loc 0x0000  --iram-size 256
 # EXT-MEM Size = 1K Bytes
@@ -53,11 +53,10 @@ SRC 	+= UartRedirect.c
 SRC 	+= Bsp.c
 SRC 	+= WavetableSynthesizer/WaveTable.c
 SRC 	+= WavetableSynthesizer/EnvelopTable.c
-SRC 	+= WavetableSynthesizer/score.c
+SRC 	+= WavetableSynthesizer/scoreList.c
 
 ASM_SRC =
 ASM_SRC   += WavetableSynthesizer/PeriodTimer.s
-ASM_SRC   += WavetableSynthesizer/PlayerUtil.s
 ASM_SRC   += WavetableSynthesizer/SynthCoreAsm.s
 
 # ASM_SRC   += WavetableSynthesizer/Synth_testbench.s
@@ -97,7 +96,6 @@ WavetableSynthesizer/PeriodTimer.rel: WavetableSynthesizer/SynthCore.inc Wavetab
 WavetableSynthesizer/Synth_testbench.rel: WavetableSynthesizer/SynthCore.inc WavetableSynthesizer/8051.inc WavetableSynthesizer/Synth.inc WavetableSynthesizer/UpdateTick.inc
 WavetableSynthesizer/UpdateTick_testbench.rel: WavetableSynthesizer/SynthCore.inc WavetableSynthesizer/8051.inc WavetableSynthesizer/Synth.inc WavetableSynthesizer/UpdateTick.inc
 WavetableSynthesizer/SynthCoreAsm.rel: WavetableSynthesizer/SynthCore.inc WavetableSynthesizer/WaveTable.inc
-WavetableSynthesizer/PlayerUtil.rel: WavetableSynthesizer/SynthCore.inc WavetableSynthesizer/Player.inc
 endif
 
 

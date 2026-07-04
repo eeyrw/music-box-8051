@@ -47,6 +47,7 @@
 #include <stdint.h>
 #include "SynthCore.h"
 #include "PeriodTimer.h"
+#include "Storage.h"
 
 // ======================== 常量 ========================
 
@@ -83,9 +84,7 @@ enum SCHEDULER_STATUS
 // SSCR_Player: 单首 SSCR 乐谱解码器
 typedef struct _SSCR_Player
 {
-    __code uint8_t *data;       // 事件数据指针 (跳过 13 字节 header)
-    uint32_t length;            // 事件数据长度
-    uint32_t position;          // 当前读取位置
+    ScoreStream stream;         // 事件数据流 (base+pos+size, 跳过 13 字节 header)
     uint32_t nextEventTick;     // 下一组事件的触发 tick
     uint8_t flags;              // SSCR header flags
     int8_t totalTranspose;      // 编码移调值 (还原: originalNote = encodedNote - totalTranspose)
@@ -98,7 +97,7 @@ typedef struct _PlayScheduler
     uint8_t schedulerMode;                  // 播放模式
     int32_t currentScoreIndex;             // 当前曲目编号
     uint32_t maxScoreNum;                   // 曲目总数
-    __code uint8_t *ssplData;              // 完整 SSPL 数据指针
+    ScoreStream ssplStream;                // 完整 SSPL 数据流
     uint8_t status;                         // 调度器状态
     uint8_t switchDirect;                   // 切歌方向
 } PlayScheduler;
@@ -123,7 +122,7 @@ extern void SchedulerPlaySong(Player *player, int32_t index);
 extern void PlaySchedulerNextScore(Player *player);
 extern void PlaySchedulerPreviousScore(Player *player);
 
-extern void PlayScore(Player *player, __code uint8_t *sscrScore);
+extern void PlayScore(Player *player, ScoreStream *sspl, uint32_t offset);
 extern void StopDecode(Player *player);
 
 #endif

@@ -25,10 +25,13 @@ CODE_SIZE = --code-loc 0x0000 --code-size 65536
 # INT-MEM Size = 256 Bytes
 IRAM_SIZE = --idata-loc 0x0000  --iram-size 256
 # EXT-MEM Size = 1K Bytes
-XRAM_SIZE = --xram-loc 0x0000 --xram-size 1792
+XRAM_SIZE = --xram-loc 0x0000 --xram-size 3072
 
 # all the files will be generated with this name (main.elf, main.bin, main.hex, etc)
 PROJECT_NAME=music-box-8051
+
+# Storage backend: internal (default) or spi
+STORAGE ?= internal
 
 # specify define
 DEFS       = NO_RUN_TEST
@@ -53,7 +56,16 @@ SRC 	+= UartRedirect.c
 SRC 	+= Bsp.c
 SRC 	+= WavetableSynthesizer/WaveTable.c
 SRC 	+= WavetableSynthesizer/EnvelopTable.c
-SRC 	+= WavetableSynthesizer/scoreList.c
+
+# Storage backend selection
+ifeq ($(STORAGE),spi)
+  DEFS += STORAGE_BACKEND_SPI
+  SRC  += WavetableSynthesizer/Storage_SPI.c
+  # scoreList.c 不编译: 乐谱数据预烧录在 SPI FLASH 中
+else
+  SRC  += WavetableSynthesizer/Storage.c
+  SRC  += WavetableSynthesizer/scoreList.c
+endif
 
 ASM_SRC =
 ASM_SRC   += WavetableSynthesizer/PeriodTimer.s

@@ -28,7 +28,12 @@
 #include "RegisterDefine.h"
 #include "Bsp.h"
 
-__code extern unsigned char Score[];
+#ifdef STORAGE_BACKEND_SPI
+  #define SCORE_BASE_ADDR  0x00000000UL
+#else
+  __code extern unsigned char Score[];
+  #define SCORE_BASE_ADDR  ((uint32_t)(uint16_t)Score)
+#endif
 
 /* ================================================================
  * SSCR 解码器内部
@@ -36,18 +41,12 @@ __code extern unsigned char Score[];
 
 static uint8_t sscr_read_byte(SSCR_Player *d, uint8_t *out)
 {
-    if (d->position >= d->length)
-        return 0;
-    *out = d->data[d->position++];
-    return 1;
+    return stream_read(&d->stream, out);
 }
 
 static uint8_t sscr_peek_byte(SSCR_Player *d, uint8_t *out)
 {
-    if (d->position >= d->length)
-        return 0;
-    *out = d->data[d->position];
-    return 1;
+    return stream_peek(&d->stream, out);
 }
 
 static uint32_t sscr_read_delta(SSCR_Player *d)
@@ -199,17 +198,10 @@ static void SchedulerPlayIndex(Player *player, int32_t index)
 
     player->scheduler.currentScoreIndex = index;
 
-    // 从 SSPL 入口表读取该曲目的偏移
-    __code uint8_t *p = player->scheduler.ssplData
-                      + SSPL_HEADER_SIZE
-                      + (uint16_t)((uint16_t)index * SSPL_ENTRY_SIZE);
+    uint32_t entryOff = SSPL_HEADER_SIZE + (uint32_t)index * SSPL_ENTRY_SIZE;
+    uint32_t scoreOff = stream_u32(&player->scheduler.ssplStream, entryOff);
 
-    uint32_t offset = (uint32_t)p[0]
-                    | ((uint32_t)p[1] << 8)
-                    | ((uint32_t)p[2] << 16)
-                    | ((uint32_t)p[3] << 24);
-
-    PlayScore(player, (__code uint8_t *)(player->scheduler.ssplData + offset));
+    PlayScore(player, &player->scheduler.ssplStream, scoreOff);
     player->scheduler.status = SCHEDULER_READY_TO_SWITCH;
 }
 
@@ -274,21 +266,24 @@ void PlaySchedulerProcess(Player *player)
 
 void StartPlayScheduler(Player *player, uint8_t mode)
 {
-    player->scheduler.ssplData = Score;
+#ifdef STORAGE_BACKEND_SPI
+    spi_storage_init();
+#endif
+    stream_init(&player->scheduler.ssplStream, SCORE_BASE_ADDR, 0xFFFFFFFFUL);
     player->scheduler.currentScoreIndex = -1;
     player->scheduler.status = SCHEDULER_STOP;
     player->scheduler.schedulerMode = mode;
 
-    // 校验 SSPL magic
-    if (Score[0] != 'S' || Score[1] != 'S' ||
-        Score[2] != 'P' || Score[3] != 'L')
+    if (stream_u8(&player->scheduler.ssplStream, 0) != 'S'
+     || stream_u8(&player->scheduler.ssplStream, 1) != 'S'
+     || stream_u8(&player->scheduler.ssplStream, 2) != 'P'
+     || stream_u8(&player->scheduler.ssplStream, 3) != 'L')
     {
         player->scheduler.maxScoreNum = 0;
         return;
     }
 
-    player->scheduler.maxScoreNum = (uint16_t)Score[6]
-                                  | ((uint16_t)Score[7] << 8);
+    player->scheduler.maxScoreNum = stream_u16(&player->scheduler.ssplStream, 6);
 
     if (player->scheduler.maxScoreNum == 0)
     {
@@ -310,27 +305,23 @@ void StopPlayScheduler(Player *player)
     player->scheduler.status = SCHEDULER_STOP;
 }
 
-void PlayScore(Player *player, __code uint8_t *score)
+void PlayScore(Player *player, ScoreStream *sspl, uint32_t offset)
 {
-    // 校验 SSCR magic
-    if (score[0] != 'S' || score[1] != 'S' ||
-        score[2] != 'C' || score[3] != 'R')
+    if (stream_u8(sspl, offset + 0) != 'S'
+     || stream_u8(sspl, offset + 1) != 'S'
+     || stream_u8(sspl, offset + 2) != 'C'
+     || stream_u8(sspl, offset + 3) != 'R')
     {
         player->decoder.status = STATUS_STOP;
         return;
     }
 
-    player->decoder.flags = score[5];
-    player->decoder.totalTranspose = (int8_t)score[12];
+    player->decoder.flags          = stream_u8(sspl, offset + 5);
+    player->decoder.totalTranspose = (int8_t)stream_u8(sspl, offset + 12);
 
-    uint32_t dataLen = (uint32_t)score[8]
-                     | ((uint32_t)score[9]  << 8)
-                     | ((uint32_t)score[10] << 16)
-                     | ((uint32_t)score[11] << 24);
+    uint32_t dataLen = stream_u32(sspl, offset + 8);
 
-    player->decoder.data     = score + SSCR_HEADER_SIZE;
-    player->decoder.length   = dataLen;
-    player->decoder.position = 0;
+    stream_sub(&player->decoder.stream, sspl, offset + SSCR_HEADER_SIZE, dataLen);
 
     currentTick = 0;
     decayGenTick = 0;

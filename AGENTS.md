@@ -3,9 +3,12 @@
 ## Build
 
 ```bash
-make              # production build (NO_RUN_TEST + STC8 defined)
+make              # production build (NO_RUN_TEST + STC8 defined, internal flash)
 make clean
 make flash        # build + flash via stcgal
+
+# Storage backend selection:
+make STORAGE=spi  # external SPI FLASH backend (excludes scoreList.c)
 ```
 
 SDCC toolchain for 8051 (C: `sdcc`, asm: `sdas8051`, hex packer: `packihx`). Outputs `.ihx` → `.hex` (via packihx) and `.bin` (via `sdobjcopy -O binary`).
@@ -13,6 +16,221 @@ SDCC toolchain for 8051 (C: `sdcc`, asm: `sdas8051`, hex packer: `packihx`). Out
 `F_CPU` defaults to 16000000 in Makefile but `Bsp.c` overrides it to **22118400UL** — do not trust the Makefile value. Timer0 reload is always computed from 22118400.
 
 Memory model is **large** (xdata used). Stack-auto is enabled (`--stack-auto`), required for ISR reentrancy safety.
+
+## Hardware
+
+### MCU: STC8H3K64S2-45I-TSSOP20
+
+64KB Flash, 256B IRAM + 3KB XRAM, 22.1184 MHz internal oscillator.
+
+`EAXFR` (P_SW2.7) 用于访问 XFR 扩展 SFR (0xFA00~0xFFFF)，不影响 XRAM 低 0x0000~0x0BFF 区域。
+
+`EXTRAM` (AUXR.1) 复位默认 0，使能内部 XRAM。**切勿置 1**，否则内部 XRAM 被禁用。
+
+#### 关键寄存器
+
+| 寄存器 | 地址 | 关键位 | 说明 |
+|--------|------|--------|------|
+| P_SW2 | 0xBA | .7=EAXFR | 1=访问扩展SFR(XFR), 0=访问XRAM(0xFA00+) |
+| AUXR | 0x8E | .1=EXTRAM | 0=使能内部XRAM, 1=禁用(访问外部总线) |
+| P_SW1 | 0xA2 | .3:.2 | SPI 引脚组选择 (见下文 SPI 组表) |
+| SPCTL | 0xCE | .6=SPEN | 1=使能硬件SPI |
+| SPSTAT | 0xCD | .7=SPIF | SPI传输完成标志(写1清0) |
+| SPDAT | 0xCF | — | SPI数据寄存器 |
+
+#### 内存布局
+
+```
+地址范围          大小    用途
+0x0000–0x0BFF    3072B   内部 XRAM (MOVX 访问, EXTRAM=0)
+0x0C00–0xF9FF    —       保留区
+0xFA00–0xFFFF    1536B   扩展 SFR / XFR (EAXFR=1 时 MOVX 访问)
+0x0000–0x00FF     256B   内部 RAM (DATA/IDATA, 直接/间接访问)
+  0x00–0x07      8B      Register Bank 0–3 (PSW 选择)
+  0x08–0x1F      —       Register Bank 1 (ISR 专用)
+  0x20–0x2F      16B     位寻址区
+  0x21            1B     Synthesizer struct 起始 (绝对地址)
+  0x30–0x7F      80B     用户 DATA/堆栈
+  0x80–0xFF     128B     IDATA (间接寻址) + SFR (直接寻址)
+```
+
+#### IRC 时钟注意事项
+
+- 复位后固定 24MHz；用户代码运行时使用上次烧录时设定的频率
+- **32~37MHz 可能为盲区**，强烈建议 ≤30MHz 或 ≥40MHz
+- B 版芯片低温温漂较高温大，低频段温漂比高频段大
+- 当前项目使用 22.1184MHz (安全)
+
+### SPI 引脚组 (P_SW1 切换)
+
+| 组 | P_SW1[3:2] | SS | MOSI | MISO | SCLK | 说明 |
+|----|-----------|------|------|------|------|------|
+| 1 | 00 | P1.2 | P1.3 | P1.4 | P1.5 | 与音频PWM (P1.2/P1.3) **冲突** |
+| 2 | 01 | P2.2 | P2.3 | P2.4 | P2.5 | TSSOP20 上不可用 (无P2口) |
+| 3 | 10 | P5.4 | P4.0 | P4.1 | P4.3 | TSSOP20 上不可用 |
+| 4 | 11 | P3.5 | P3.4 | P3.3 | P3.2 | ✓ 当前使用，**数据线交叉** |
+
+### Components
+
+| Ref | Part | Function |
+|-----|------|----------|
+| U2  | STC8H3K64S2-45I-TSSOP20 | MCU |
+| U3  | CH340E | USB-UART (programming + UART commands) |
+| U4  | ZD25WQ80BTIGT (SOP-8) | 8Mb SPI NOR Flash (score storage, external) |
+| U5  | TPA2010D1YZFR | Audio amplifier (Class-D) |
+| U1  | ME2188C50M5G | Boost converter (battery → 5V) |
+| POT1 | B503 | 50K potentiometer (volume?) |
+
+### 原理图信号路径
+
+```
+电源:
+  BT1 (电池) → SW1 → U1 (ME2188C50M5G Boost 5V) → VCC
+  USB-C (VUSB) → SW1 也可供电 (D3 隔离)
+  U3 (CH340E) 由 USB-C 供电 (VUSB → U3-7)
+
+音频:
+  U2-19 (PWM) → R4 → U5-C1 (TPA2010D1 输入)
+  U5-A3/C3 → SPK1 (扬声器)
+  U2-2 (SHDN) → U5-C2 (功放使能, 高有效)
+
+UART:
+  U2-11 (TX/P3.1) → D1 → U3-8 (CH340 RX)
+  U2-12 (RX/P3.0) ← D2 ← U3-9 (CH340 TX)
+  115200 baud, Timer2 做波特率发生器
+
+ADC:
+  U2-20 ← R8 ← 分压 → R6 → GND (电池电压检测?)
+```
+
+### Bsp.c HardwareInit 已配置引脚
+
+```c
+P3M1 &= ~(1 << 2), P3M0 |= (1 << 2);  // P3.2 推挽输出
+P3M1 &= ~(1 << 3), P3M0 |= (1 << 3);  // P3.3 推挽输出
+P5M1 &= ~(1 << 5), P5M0 |= (1 << 5);  // P5.5 推挽输出 (P55, 示波器时序测量)
+```
+
+### MCU Pin Mapping (TSSOP20)
+
+```
+Pin |  Net    | GPIO        | Alt Functions          | Connected to
+----|---------|-------------|------------------------|------------------
+ 1  | RXD2    | P1.0        | RxD2 / ADC0 / PWM1P    | TP_RXD2
+ 2  | SHDN    | P5.4?       | nRST / MCLKO           | U5-C2 (TPA2010 SHDN)
+ 3  | INDICATOR|(various)   |                        | LED (R9→VCC)
+ 4  | GND     | —           |                        | GND
+ 5  | VCC     | —           |                        | VCC
+ 6  | VCC     | —           |                        | VCC
+ 8  | VCC     | —           |                        | VCC
+ 9  | P55     | P5.5        | TP_P55                 | oscilloscope timing pin
+10  | GND     | —           |                        | GND
+11  | TX      | P3.1        | TxD (UART1)            | D1→U3-8 (CH340 RX)
+12  | RX      | P3.0        | RxD (UART1)            | D2→U3-9 (CH340 TX)
+13  | SCK2    | P3.2        | SCLK_4 / INT0          | U4-6 (Flash SCLK)
+14  | SDI2    | P3.3        | MISO_4 / INT1          | U4-5 (Flash SI)
+15  | SDO2    | P3.4        | MOSI_4 / T0            | U4-2 (Flash SO)
+16  | SS2     | P3.5        | SS_4 / T1              | U4-1 (Flash CS#)
+17  | TXD2    | P1.1        | TxD2 / ADC1 / PWM1N    | TP_TXD2
+19  | PWM     | (PWM output)|                        | R4→U5 (Audio PWM→Amp)
+20  | (ADC)   |             |                        | R8 → R6 → GND (ADC?)
+```
+
+### SPI Flash Connection (ZD25WQ80B — U4)
+
+```
+Flash Pin | Signal | MCU Pin | MCU GPIO  | Notes
+----------|--------|---------|-----------|---------------------------
+ 1 (CS#)  | SS2    | 16      | P3.5/SS_4 | ✓ Chip Select
+ 2 (SO)   | SDO2   | 15      | P3.4      | ★ Cross-wired (see below)
+ 5 (SI)   | SDI2   | 14      | P3.3      | ★ Cross-wired (see below)
+ 6 (SCLK) | SCK2   | 13      | P3.2      | ✓ Clock
+ 3 (WP#)  | —      | —       | VCC       | Write protect disabled
+ 7 (HOLD#)| —      | —       | VCC       | Hold disabled
+ 4 (GND)  | —      | —       | GND       |
+ 8 (VCC)  | —      | —       | VCC       |
+```
+
+### ★ SPI Data-Line Cross-Wire
+
+MCU 的 SPI 组 4 将 P3.3 定义为 MISO (输入)、P3.4 定义为 MOSI (输出)。
+但 PCB 实际走线是：
+
+```
+MCU P3.3 (MISO_4)  →  Flash Pin 5 (SI)    ← 应为 MOSI→SI
+MCU P3.4 (MOSI_4)  →  Flash Pin 2 (SO)    ← 应为 MISO←SO
+```
+
+SCLK (P3.2) 和 CS# (P3.5) 接线正确。
+
+**后果**：STC8 硬件 SPI 模块无法直接使用（MOSI/MISO 角色对调）。
+
+**解决方案** (按推荐排序):
+1. **飞线交换** Flash 的 Pin2/Pin5 (或 MCU 的 Pin14/Pin15)，然后可用硬件 SPI 加速
+2. **当前软件方案** (`Storage_SPI.c`)：GPIO 模拟 SPI，手动将 P3.3 当 MOSI、P3.4 当 MISO
+
+### Storage Abstraction Layer
+
+乐谱存储通过 `Storage.h` 定义的 `ScoreStream` 抽象访问。
+
+```
+内置 FLASH (默认):                SPI FLASH (STORAGE_BACKEND_SPI):
+ScoreStream {                     ScoreStream {
+    __code uint8_t *data;  (2B)       uint32_t base_addr;  (4B)
+    uint32_t pos;          (4B)       uint32_t pos;        (4B)
+    uint32_t size;         (4B)       uint32_t size;       (4B)
+}   总计 10B                      }   总计 12B
+```
+
+SSCR_Player 内置: 17B | SPI: 19B
+PlayScheduler 内置: 22B | SPI: 24B
+
+### PWM Output Pins
+
+- **PWMA_CCR2** (P1.2/P1.3): audio PWM DAC, 256-count period, 8-bit resolution
+- **PWMA_CCR4** (P1.6/P1.7): visualization (mirror galvo/LED), complementary output mode, driven by `abs(mixOut) << 1`
+
+### UART / USB
+
+- UART1 (P3.0/P3.1) → CH340E → USB-C: programming + command interface at **115200 baud**
+- UART2 (P1.0/P1.1) available at TP_RXD2/TP_TXD2 test points
+- UART commands: `0xFE` (prev), `0xFD` (next), `0xDD` (software reset → `IAP_CONTR = 0x60`)
+
+## Storage Backend Switching
+
+```bash
+make                  # Internal __code FLASH (movc a,@a+dptr)
+                      #   includes scoreList.c (~29KB score data in MCU flash)
+
+make STORAGE=spi      # External SPI FLASH (GPIO bit-bang on P3.2-P3.5)
+                      #   excludes scoreList.c (data pre-programmed on SPI chip)
+                      #   calls spi_storage_init() before playback
+                      #   SCORE_BASE_ADDR = 0x00000000UL (configurable in Player.c)
+                      #   1KB XRAM read-cache (CACHE_SIZE in Storage_SPI.c)
+```
+
+To change SPI flash base address: edit `Player.c` → `#define SCORE_BASE_ADDR`.
+
+To adjust cache size: edit `Storage_SPI.c` → `#define CACHE_SIZE` (current: 1024, XRAM physical: 3KB).
+
+To switch to hardware SPI after fly-wire fix: modify `Storage_SPI.c` → `spi_storage_init()`:
+replace GPIO bit-bang with `SPI_USE_P35P34P33P32()` + `SPI_Enable()` + hardware SPI register access.
+
+### Cache Implementation (`Storage_SPI.c`)
+
+```
+static __xdata uint8_t  spi_cache[CACHE_SIZE];   // 1024B 缓冲区
+static uint32_t          spi_cache_base;           // 缓存块对齐基地址
+static uint8_t           spi_cache_valid;          // 缓存有效标志
+```
+
+工作机制:
+- `stream_read/stream_peek` (流式顺序读): 命中率 ≈ 511/512，每 1024 字节触发一次 SPI 整块加载
+- `stream_u8/u16/u32` (随机偏移读): `read_bytes_cached` 处理跨块边界，自动分段
+- Cache miss → `cache_fill()` 一次读满 1024 字节 → 后续访问走 XRAM
+- `spi_storage_init()` 中复位 `cache_valid=0`
+
+XRAM 占用: ~1066 字节 (Player 42 + Cache 1024), 物理 3K 的 35%
 
 ## Score Generation
 
@@ -56,7 +274,7 @@ Main loop polls `PlayerProcess()` which decodes SSCR events, feeds notes via `No
 
 ### Fixed memory layout (critical — do not change blindly)
 
-- **Player struct**: SDCC auto-allocated in XRAM (~31 bytes). `SSCR_Player` (17B) + `PlayScheduler` (14B).
+- **Player struct**: SDCC auto-allocated in XRAM (~39 bytes). `SSCR_Player` (17B) + `PlayScheduler` (22B). With SPI: 19B + 24B.
 - **Synthesizer struct**: absolute DATA `0x21`, 83 bytes (`SynthCore.inc`, declared in `SynthCoreAsm.s` via `.org`)
 - **currentTick + decayGenTick**: DSEG allocated by `UpdateTick.inc` (5 bytes DATA at compiler-assigned address)
 - **8 voices × 10 bytes** each: `increment_frac(0)`, `increment_int(1)`, `wavetablePos_frac(2)`, `wavetablePos_int_l(3)`, `wavetablePos_int_h(4)`, `envelopeLevel(5)`, `envelopePos(6)`, `val_l(7)`, `val_h(8)`, `sampleVal(9)`
@@ -149,11 +367,6 @@ State machine: `READY_TO_SWITCH` → `SWITCHING` → `SCORE_PREV/NEXT` → `READ
 ### Note assignment
 
 Round-robin across 8 voices. `NoteOnAsm` runs inside `clr ea`/`setb ea` critical section.
-
-### PWM Output
-
-- **PWMA_CCR2** (P1.2/P1.3): audio PWM DAC, 256-count period, 8-bit resolution
-- **PWMA_CCR4** (P1.6/P1.7): visualization (mirror galvo/LED), complementary output mode, driven by `abs(mixOut) << 1`
 
 ## Assembly dependency tracking
 

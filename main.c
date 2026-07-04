@@ -5,7 +5,6 @@
 #include "Bsp.h"
 
 extern void TestProcess(void);
-extern __code unsigned char Score[];
 Player mainPlayer;
 
 void VisualizeSound(void)

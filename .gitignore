@@ -30,3 +30,4 @@ build
 *.ipch
 .DS_Store
 STC8H-cn.pdf
+*.pdf

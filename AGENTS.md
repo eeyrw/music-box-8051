@@ -5,6 +5,7 @@
 ```bash
 make              # production build (NO_RUN_TEST + STC8 defined)
 make clean
+make flash        # build + flash via stcgal
 ```
 
 SDCC toolchain for 8051 (C: `sdcc`, asm: `sdas8051`, hex packer: `packihx`). Outputs `.ihx` → `.hex` (via packihx) and `.bin` (via `sdobjcopy -O binary`).
@@ -12,6 +13,24 @@ SDCC toolchain for 8051 (C: `sdcc`, asm: `sdas8051`, hex packer: `packihx`). Out
 `F_CPU` defaults to 16000000 in Makefile but `Bsp.c` overrides it to **22118400UL** — do not trust the Makefile value. Timer0 reload is always computed from 22118400.
 
 Memory model is **large** (xdata used). Stack-auto is enabled (`--stack-auto`), required for ISR reentrancy safety.
+
+## Score Generation
+
+Scores use the [midi-to-simplescore](https://github.com/eeyrw/midi-to-simplescore) toolchain:
+
+```bash
+pip3 install -e /path/to/midi-to-simplescore
+
+# Single SSCR score
+midi-to-simplescore --midi song.mid -o ./output --template 8051_sdcc --tickPerSecond 125
+
+# Multi-score SSPL container (generates scoreList.c directly)
+python3 SSPL_Packer.py song1.mid song2.mid ... \
+  -c WavetableSynthesizer/scoreList.c \
+  --template 8051_sdcc --tickPerSecond 125 --voiceCenterNote 60
+```
+
+`--tickPerSecond 125` is required: Timer0 runs at 32000 Hz, score compare is `currentTick>>8`, giving 32000/256 = 125 effective ticks/sec.
 
 ## Test / Verification
 
@@ -33,12 +52,13 @@ Timer0 ISR (PeriodTimer.s, bank 1)
   └─ UpdateTick (UpdateTick.inc) — 32-bit tick counter
 ```
 
-Main loop polls `PlayerProcess()` which feeds notes via `NoteOnAsm` and triggers envelope decay via `GenDecayEnvlopeAsm`.
+Main loop polls `PlayerProcess()` which decodes SSCR events, feeds notes via `NoteOnAsm`, and triggers envelope decay via `GenDecayEnvlopeAsm`.
 
 ### Fixed memory layout (critical — do not change blindly)
 
-- **Player struct**: SDCC auto-allocated in DATA (~34 bytes). Previously at absolute `0x10`, now compiler-placed. `PlayerUtil.s` is removed from the build.
-- **Synthesizer struct**: absolute DATA `0x40`, 83 bytes (`SynthCore.inc`, declared in `SynthCoreAsm.s` via `.org`)
+- **Player struct**: SDCC auto-allocated in XRAM (~31 bytes). `SSCR_Player` (17B) + `PlayScheduler` (14B).
+- **Synthesizer struct**: absolute DATA `0x21`, 83 bytes (`SynthCore.inc`, declared in `SynthCoreAsm.s` via `.org`)
+- **currentTick + decayGenTick**: DSEG allocated by `UpdateTick.inc` (5 bytes DATA at compiler-assigned address)
 - **8 voices × 10 bytes** each: `increment_frac(0)`, `increment_int(1)`, `wavetablePos_frac(2)`, `wavetablePos_int_l(3)`, `wavetablePos_int_h(4)`, `envelopeLevel(5)`, `envelopePos(6)`, `val_l(7)`, `val_h(8)`, `sampleVal(9)`
 - ISR uses **register bank 1** (`psw = 0x08`) so R0-R7 do not conflict with C code's bank 0
 
@@ -55,27 +75,76 @@ Per-voice per-tick:
 
 After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), write to `PWMA_CCR2` (PWM DAC output).
 
-### Score format
+### Score format — SSPL + SSCR
 
-`__code` data (flash). Score list format: 12-byte header with "SCRE" magic + count + address table, followed by score data. Alternating bytes:
-- byte with bit 7 set (`>= 0x80`) = note-on (MIDI number = `byte & 0x7F`)
-- byte `< 0x80` = delta-time (accumulated into `lastScoreTick`)
-- `0xFF` = extended duration (chains with previous delta)
-- Two consecutive `0xFF` = end of score
+Scores are stored as a single `__code unsigned char Score[]` in flash using the **SSPL** container format containing multiple **SSCR** scores.
+
+#### SSPL container (12-byte header)
+
+```
+Offset | Size | Field
+-------|------|-------
+0      | 4    | Magic "SSPL" (0x53 0x53 0x50 0x4C)
+4      | 1    | Version = 0x01
+5      | 1    | Flags
+6      | 2    | Count (uint16 LE) — number of scores
+8      | 4    | Reserved
+12     | 8×N  | Entry table: offset(4LE) + size(4LE) per entry
+```
+
+#### SSCR format (13-byte header per score)
+
+```
+Offset | Size | Field
+-------|------|-------
+0      | 4    | Magic "SSCR" (0x53 0x53 0x43 0x52)
+4      | 1    | Version = 0x03
+5      | 1    | Flags (bit0=NoteOn velocity, bit1=NoteOff velocity)
+6      | 2    | TickPerSecond (uint16 LE)
+8      | 4    | DataLength (uint32 LE)
+12     | 1    | TotalTranspose (int8) — inverse to restore original pitch
+13     | var  | Event data
+```
+
+#### Event data encoding
+
+- **Delta bytes** (bit7=0): 6-bit little-endian chunks, bit6=1 means continuation
+  - 0–63: 1 byte; 64–4095: 2 bytes; up to 24-bit total
+- **Event bytes** (bit7=1):
+  - `0xC0–0xFD`: NoteOn direct (note = byte & 0x3F, range 0–61)
+  - `0xFF` + next_byte: NoteOn extended (full note 0–127)
+  - `0x80–0xBD`: NoteOff direct (skipped — not used by current player)
+  - `0xBF` + next_byte: NoteOff extended (skipped)
+  - `0xBE`: EndOfScore
+  - `0xFE`: Reserved → stop
+- Pitch restoration: `playNote = encodedNote - TotalTranspose`
+
+#### NoteOn flow
+
+```
+SSCR event byte → sscr_dispatch_event()
+  → decode note (direct or extended)
+  → apply totalTranspose inverse
+  → NoteOnAsm(MIDI_note)
+```
+
+Velocity and NoteOff are parsed but not used by the current synth.
 
 ### Multi-score scheduler
 
-The player supports multiple songs via `PlaySchedulerProcess` state machine in `Player.c`. Score list header at start of flash:
-- Bytes 0-3: "SCRE" magic identifier
-- Bytes 4-7: `scoreCount` (uint32_t, little-endian)
-- Bytes 8-11: `firstAddr` (uint32_t, absolute offset from Score[] base)
+The player supports multiple songs via `PlaySchedulerProcess` state machine in `Player.c`. SSPL header is parsed from `Score[]`:
+
+```c
+void StartPlayScheduler(Player *player, uint8_t mode);
+// mode: MODE_ORDER_PLAY (loop) / MODE_LIST_ONCE / MODE_SINGLE_SONG
+```
 
 UART commands at 115200 baud:
 - `0xFE`: previous song
 - `0xFD`: next song
-- `0xDD`: software reset
+- `0xDD`: software reset (`IAP_CONTR = 0x60`)
 
-`MODE_ORDER_PLAY` loops through all songs; `MODE_ONE_SHOT_PLAY` stops after one play.
+State machine: `READY_TO_SWITCH` → `SWITCHING` → `SCORE_PREV/NEXT` → `READY_TO_SWITCH` (or `STOP` → IDLE power-down).
 
 ### Note assignment
 
@@ -93,7 +162,8 @@ SDCC's assembler cannot auto-generate dependency files. Changes to `.inc` files 
 ## Files with duplicates / overlaps
 
 - `score.c` existed both at repo root and in `WavetableSynthesizer/`. The Makefile now compiles `WavetableSynthesizer/scoreList.c`. Both `score.c` copies are removed.
-- `PlayerUtil.s` declared the `_mainPlayer` struct at `PlayrAbsAddr` (0x10) and had **stub** implementations of `PlayNoteTimingCheck` and `PlayUpdateNextScoreTick`. Removed from build — Player is now auto-allocated by SDCC.
+- `PlayerUtil.s` is removed from build — Player is auto-allocated by SDCC.
+- `Player.inc` is documentation only, not compiled.
 
 ## Assembly optimization opportunities
 
@@ -101,10 +171,10 @@ SDCC's assembler cannot auto-generate dependency files. Changes to `.inc` files 
 
 - **B register pressure**: `mov b,r4` (line 48) loads envelope before the signed-mul branch. If interpolation is disabled (`.ifne USE_LINEAR_INTEROP`), `r4` is unused between lines 13-48.
 - **Signed multiply branching**: For each voice, two separate signed-mul code paths (interpolation multiply + envelope multiply) generate unique labels per `.irp` iteration. The `jb a.7` / `cpl / inc / mul / cpl / addc` pattern is correct but verbose. Could unify with a subroutine if code size matters more than cycles.
-- **mixOut >>= 1 with sign extension** (lines 120-130): uses `r4,r5` as temporaries, shifting bit 7 of the high byte into carry. Could be in-place at `(pSynth+pMixOut_x)` instead of copying to registers.
-- **Clipping** (lines 137-161): the 16-bit signed `if (x > 127) x=127; else if (x < -128) x=-128` uses signed 16-bit compare with XOR-0x80 sign-flip trick. Two conditional branches. Could be replaced with saturation arithmetic using carry flags.
-- **DC offset removal** (lines 164-170): `a - (-128)` = `a + 128`. A direct `add a,#128` with carry propagation is 1-2 cycles faster than `subb a,#-128`.
-- **Phase increment** (lines 87-97): reads `pIncrement_frac/int` fresh from DATA each iteration even when increment is unchanged. Loading once per voice is already minimal since registers are scarce.
+- **mixOut >>= 1 with sign extension**: uses `r4,r5` as temporaries, shifting bit 7 of the high byte into carry. Could be in-place at `(pSynth+pMixOut_x)` instead of copying to registers.
+- **Clipping**: the 16-bit signed `if (x > 127) x=127; else if (x < -128) x=-128` uses signed 16-bit compare with XOR-0x80 sign-flip trick. Two conditional branches. Could be replaced with saturation arithmetic using carry flags.
+- **DC offset removal**: `a - (-128)` = `a + 128`. A direct `add a,#128` with carry propagation is 1-2 cycles faster than `subb a,#-128`.
+- **Phase increment**: reads `pIncrement_frac/int` fresh from DATA each iteration even when increment is unchanged. Loading once per voice is already minimal since registers are scarce.
 
 ### SynthCoreAsm.s (NoteOnAsm)
 

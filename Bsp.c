@@ -1,6 +1,7 @@
 #include "RegisterDefine.h"
 #include "Player.h"
 #include "Bsp.h"
+#include "Protocol.h"
 
 #define MAIN_Fosc 22118400UL //定义主时钟
 #define BaudRate1 115200UL   //选择波特率
@@ -24,24 +25,13 @@ void UART1_int(void) __interrupt(UART1_VECTOR)
     if (RI)
     {
         RI = 0;
-        uint8_t r = SBUF;
-        if (r == 0xFE)
-        {
-            PlaySchedulerPreviousScore(&mainPlayer);
-        }
-        else if (r == 0xFD)
-        {
-            PlaySchedulerNextScore(&mainPlayer);
-        }
-        else if (r == 0xDD)
-        {
-            IAP_CONTR = 0x60;
-        }
+        Proto_ISR_Rx(SBUF);
     }
 
     if (TI)
     {
-        //TI = 0;
+        TI = 0;
+        Proto_ISR_TxDone();
     }
 }
 
@@ -275,4 +265,15 @@ uint8_t GetRandom(void)
 void IntoPowerDown(void)
 {
     PCON |= 0x01;    // 进入 IDLE 模式 (CPU 休眠, 外设继续运行, ISR 可唤醒)
+}
+
+extern __data uint32_t sysMs;
+
+uint32_t GetSysMs(void)
+{
+    uint32_t val;
+    EA = 0;
+    val = sysMs;
+    EA = 1;
+    return val;
 }

@@ -63,6 +63,8 @@ void StartAudioOutput(void);
 void StopAudioOutput(void);
 uint8_t GetRandom(void);
 void IntoPowerDown(void);
+uint32_t GetSysMs(void);
+uint16_t Get_ADCResult(uint8_t channel);
 
 // These declaration must be included in main.c to generate ljmp in vector table.
 extern void timer_isr() __interrupt(TIMER0_VECTOR) __using(1);

@@ -3,7 +3,7 @@
 ;
 ; 本文件定义所有汇编模块共享的常量：
 ;   - 波表参数 (通过 .include "WaveTable.inc" 引入)
-;   - POLY_NUM / DECAY_TIME_FACTOR
+;   - POLY_NUM
 ;   - SoundUnit 结构体的字段偏移 (10 字节/声道)
 ;   - Synthesizer 结构体的字段偏移
 ;   - SynthAbsAddr: Synthesizer 在 DATA 内存的绝对地址
@@ -12,8 +12,8 @@
 ; 内存布局 (DATA 段)：
 ;   0x00-0x07: 寄存器 Bank 0 (C 代码使用)
 ;   0x08-0x0F: 寄存器 Bank 1 (ISR 使用)
-;   0x10-0x15: C 编译器自动分配的 DSEG 变量 (decayGenTick + currentTick)
-;   0x16-0x1F: 未使用 (10 字节)
+;   0x10-0x1A: C 编译器自动分配的 DSEG 变量 (sysMsPre + sysMs, 5 字节)
+;   0x1B-0x1F: 未使用 (5 字节)
 ;   0x20:      位寄存器
 ;   0x21-0x73: Synthesizer 结构体 (83 字节 = 8×10 + 3)
 ;   0x74-0xFF: C 栈 (140 字节)
@@ -25,17 +25,12 @@
 	.include "WaveTable.inc"
 
 	; ---- 调试/功能开关 ----
-	DEBUG_SYNTH=0                      ; 1=启用调试输出 (将中间值写入 SoundUnit.val/sampleVal)
-	USE_LINEAR_INTEROP=1               ; 1=用线性插值, 0=不用插值 (直接取最近采样点)
+	DEBUG_SYNTH=0
+	USE_LINEAR_INTEROP=1
 
 	; ---- 包络参数 ----
-	ENVELOP_LEN=256                    ; EnvelopeTable 数组长度
-	POLY_NUM=8                         ; 复音数 (同时发声数)
-
-	; ---- 衰减时间因子 ----
-	;     decayGenTick 每 tick 增 1, 到 100 后触发 GenDecayEnvlopeAsm
-	;     即每 100/32000 ≈ 3.125ms 推进一格包络
-	DECAY_TIME_FACTOR=100
+	ENVELOP_LEN=256
+	POLY_NUM=8
 
 ;====================================================================
 ; SoundUnit 结构体字段偏移 (每个声道 10 字节)

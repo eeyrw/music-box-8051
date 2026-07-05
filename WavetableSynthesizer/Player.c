@@ -9,9 +9,8 @@
 //           → NoteOnAsm(note) 触发音符
 //
 // 调度时序:
-//   currentTick (32-bit, ISR 递增) → >>8 得 scoreTick
-//   SSCR delta 值 (raw tick) 直接与 scoreTick 比较
-//   (对应 TickPerSecond=125, 即 32000/125=256=2^8)
+//   GetSysMs() 获取系统毫秒时间 (Timer0 ISR 驱动)
+//   SSCR delta (raw tick) × 8 → 毫秒 (TickPerSecond=125, 1000/125=8ms/tick)
 //
 // SSCR 事件编码:
 //   0x80-0xBD  NoteOff 直连 (note = byte & 0x3F)
@@ -28,12 +27,7 @@
 #include "RegisterDefine.h"
 #include "Bsp.h"
 
-#ifdef STORAGE_BACKEND_SPI
-  #define SCORE_BASE_ADDR  0x00000000UL
-#else
-  __code extern unsigned char Score[];
-  #define SCORE_BASE_ADDR  ((uint32_t)(uint16_t)Score)
-#endif
+static uint32_t lastDecayMs;
 
 /* ================================================================
  * SSCR 解码器内部
@@ -72,26 +66,22 @@ static uint8_t sscr_dispatch_event(SSCR_Player *d, uint8_t byte)
     uint8_t group = byte & 0x40;
     uint8_t sub   = byte & 0x3F;
 
-    // 0xBE (EOS) / 0xFE (Reserved) → 停止
     if (sub == 0x3E)
         return 0;
 
     uint8_t note;
     if (sub == 0x3F)
     {
-        // 0xBF / 0xFF: 扩展模式 → 下一字节为完整 note
         if (!sscr_read_byte(d, &note))
             return 0;
     }
     else
     {
-        // 直连模式 → note 在 sub 字段中 (0~61)
         note = sub;
     }
 
     if (group != 0)
     {
-        // ---- NoteOn ----
         if (d->flags & 0x01)
         {
             uint8_t vel;
@@ -103,7 +93,6 @@ static uint8_t sscr_dispatch_event(SSCR_Player *d, uint8_t byte)
     }
     else
     {
-        // ---- NoteOff → 跳过 ----
         if (d->flags & 0x02)
         {
             uint8_t dummy;
@@ -117,25 +106,19 @@ static uint8_t sscr_dispatch_event(SSCR_Player *d, uint8_t byte)
 
 static void SSCR_DecodeProcess(Player *player)
 {
-    // 包络衰减定时
-    if (decayGenTick >= DECAY_TIME_FACTOR)
+    uint32_t now = GetSysMs();
+
+    if (now - lastDecayMs >= 3)
     {
         GenDecayEnvlopeAsm();
-        decayGenTick = 0;
+        lastDecayMs = now;
     }
 
     SSCR_Player *d = &(player->decoder);
     if (d->status != STATUS_DECODING)
         return;
 
-    // 关中断保护 32-bit currentTick 读取
-    uint32_t tmp;
-    EA = 0;
-    tmp = (currentTick >> 8);
-    EA = 1;
-
-    // 处理所有到期事件
-    while (d->status == STATUS_DECODING && tmp >= d->nextEventTick)
+    while (d->status == STATUS_DECODING && now >= d->nextEventMs)
     {
         uint8_t byte;
         if (!sscr_peek_byte(d, &byte))
@@ -160,7 +143,7 @@ static void SSCR_DecodeProcess(Player *player)
         else
         {
             uint32_t delta = sscr_read_delta(d);
-            d->nextEventTick += delta;
+            d->nextEventMs += (uint32_t)delta * 8;
         }
     }
 }
@@ -213,9 +196,6 @@ void PlaySchedulerProcess(Player *player)
         if (player->decoder.status != STATUS_STOP)
             break;
 
-        currentTick = 0;
-        decayGenTick = 0;
-
         if (player->scheduler.schedulerMode == MODE_SINGLE_SONG)
         {
             player->scheduler.status = SCHEDULER_STOP;
@@ -266,10 +246,8 @@ void PlaySchedulerProcess(Player *player)
 
 void StartPlayScheduler(Player *player, uint8_t mode)
 {
-#ifdef STORAGE_BACKEND_SPI
-    spi_storage_init();
-#endif
-    stream_init(&player->scheduler.ssplStream, SCORE_BASE_ADDR, 0xFFFFFFFFUL);
+    storage_init();
+    stream_init(&player->scheduler.ssplStream, storage_get_base_addr(), 0xFFFFFFFFUL);
     player->scheduler.currentScoreIndex = -1;
     player->scheduler.status = SCHEDULER_STOP;
     player->scheduler.schedulerMode = mode;
@@ -323,18 +301,15 @@ void PlayScore(Player *player, ScoreStream *sspl, uint32_t offset)
 
     stream_sub(&player->decoder.stream, sspl, offset + SSCR_HEADER_SIZE, dataLen);
 
-    currentTick = 0;
-    decayGenTick = 0;
-
-    player->decoder.nextEventTick = sscr_read_delta(&(player->decoder));
+    lastDecayMs = GetSysMs();
+    uint32_t delta = sscr_read_delta(&(player->decoder));
+    player->decoder.nextEventMs = lastDecayMs + delta * 8;
     player->decoder.status = STATUS_DECODING;
 }
 
 void StopDecode(Player *player)
 {
     player->decoder.status = STATUS_STOP;
-    currentTick = 0;
-    decayGenTick = 0;
 }
 
 void PlayerProcess(Player *player)
@@ -346,7 +321,20 @@ void PlayerProcess(Player *player)
 void PlayerInit(Player *player, Synthesizer *synthesizer)
 {
     player->decoder.status = STATUS_STOP;
-    currentTick = 0;
-    decayGenTick = 0;
+    lastDecayMs = GetSysMs();
     SynthInit(synthesizer);
+}
+
+void PlayerPlay(Player *player)
+{
+    if (player->scheduler.status == SCHEDULER_STOP)
+    {
+        player->scheduler.status = SCHEDULER_READY_TO_SWITCH;
+    }
+}
+
+void PlayerStop(Player *player)
+{
+    StopDecode(player);
+    player->scheduler.status = SCHEDULER_STOP;
 }

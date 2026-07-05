@@ -54,16 +54,17 @@ SRC 	+= WavetableSynthesizer/SynthCore.c
 SRC 	+= WavetableSynthesizer/Player.c
 SRC 	+= UartRedirect.c
 SRC 	+= Bsp.c
+SRC 	+= Protocol.c
 SRC 	+= WavetableSynthesizer/WaveTable.c
 SRC 	+= WavetableSynthesizer/EnvelopTable.c
 
 # Storage backend selection
 ifeq ($(STORAGE),spi)
   DEFS += STORAGE_BACKEND_SPI
-  SRC  += WavetableSynthesizer/Storage_SPI.c
-  # scoreList.c 不编译: 乐谱数据预烧录在 SPI FLASH 中
+  SRC  += Storage_SPI.c
+  SRC  += SpiFlash.c
 else
-  SRC  += WavetableSynthesizer/Storage.c
+  SRC  += Storage_Internal.c
   SRC  += WavetableSynthesizer/scoreList.c
 endif
 
@@ -149,14 +150,12 @@ STCGAL_BOOT_CMD ?= auto
 BOOT_SCRIPT = python3 tools/boot.py $(STCGAL_PORT) $(STCGAL_BAUD)
 
 boot:
-	@echo [BOOT] sending 0xDD to $(STCGAL_PORT)
+	@echo [BOOT] sending RESET frame to $(STCGAL_PORT)
 	$(BOOT_SCRIPT)
 
 flash: $(PROJECT_NAME).ihx
-	@if [ "$(STCGAL_BOOT_CMD)" != "none" ]; then \
-		echo [BOOT] sending 0xDD to $(STCGAL_PORT); \
-		$(BOOT_SCRIPT); \
-	fi
+	@echo [BOOT] sending RESET frame to $(STCGAL_PORT)
+	@$(BOOT_SCRIPT)
 	@echo [FLASH] $(PROJECT_NAME).ihx via stcgal
 	stcgal -P $(STCGAL_PROTO) -p $(STCGAL_PORT) -b $(STCGAL_BAUD) $<
 	

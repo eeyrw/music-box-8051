@@ -35,10 +35,9 @@
 //
 // 目前实现: 忽略 NoteOff, 忽略 velocity
 //
-// UART 命令 (115200 baud):
-//   0xFE — 上一首
-//   0xFD — 下一首
-//   0xDD — 软件复位
+// 串口协议:
+//   完整帧协议: SYNC(0x5A) + CMD + LEN + PAYLOAD + CHECKSUM
+//   详见 Protocol.h
 //====================================================================
 
 #ifndef __PLAYER_H__
@@ -85,7 +84,7 @@ enum SCHEDULER_STATUS
 typedef struct _SSCR_Player
 {
     ScoreStream stream;         // 事件数据流 (base+pos+size, 跳过 13 字节 header)
-    uint32_t nextEventTick;     // 下一组事件的触发 tick
+    uint32_t nextEventMs;       // 下一组事件的触发时刻 (ms)
     uint8_t flags;              // SSCR header flags
     int8_t totalTranspose;      // 编码移调值 (还原: originalNote = encodedNote - totalTranspose)
     uint8_t status;             // STATUS_STOP / STATUS_DECODING
@@ -124,5 +123,8 @@ extern void PlaySchedulerPreviousScore(Player *player);
 
 extern void PlayScore(Player *player, ScoreStream *sspl, uint32_t offset);
 extern void StopDecode(Player *player);
+
+extern void PlayerPlay(Player *player);
+extern void PlayerStop(Player *player);
 
 #endif

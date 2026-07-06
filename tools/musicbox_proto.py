@@ -121,6 +121,7 @@ class MusicBoxClient:
         self.ser = serial.Serial(port, baud, timeout=1.0)
 
     def _send_cmd(self, cmd, payload=b""):
+        self.ser.reset_input_buffer()
         frame = build_frame(cmd, payload)
         self.ser.write(frame)
         self.ser.flush()
@@ -128,20 +129,36 @@ class MusicBoxClient:
     def _recv_frame(self, timeout=3.0):
         buf = bytearray()
         deadline = time.time() + timeout
+
         while time.time() < deadline:
             c = self.ser.read(1)
             if not c:
                 continue
-            if c[0] == SYNC and len(buf) > 0:
-                buf = bytearray()
+            if c[0] == SYNC:
+                buf = bytearray([c[0]])
+                break
+
+        if len(buf) == 0:
+            return None
+
+        while len(buf) < 4 and time.time() < deadline:
+            c = self.ser.read(1)
+            if c:
                 buf.append(c[0])
-                continue
-            buf.append(c[0])
-            if len(buf) >= 5:
-                dlen = buf[3]
-                total = 5 + dlen
-                if len(buf) >= total:
-                    return bytes(buf[:total])
+
+        if len(buf) < 4:
+            return None
+
+        dlen = buf[3]
+        total = 5 + dlen
+
+        while len(buf) < total and time.time() < deadline:
+            c = self.ser.read(1)
+            if c:
+                buf.append(c[0])
+
+        if len(buf) >= total:
+            return bytes(buf[:total])
         return None
 
     def _do_cmd(self, cmd, payload=b"", eat_extra=True, timeout=3.0):

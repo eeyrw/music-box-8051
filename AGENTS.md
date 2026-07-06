@@ -414,6 +414,20 @@ Response: `SYNC(0x5A) | CMD\|0x80 | STATUS | LEN | [DATA] | CHECKSUM`
 
 Python CLI: `tools/musicbox_proto.py --port /dev/ttyUSB0 <command> [args...]`
 
+### Protocol reliability fixes (2026-07)
+
+**1. SYNC-byte-in-payload corruption (host side)**
+
+`_recv_frame` 旧版在读到任意 `0x5A` 时重置缓冲区。若 payload 中恰好含 `0x5A`（如 VOICE_DUMP 80 字节合成器状态数据），会截断有效帧，拼接残帧导致 `invalid response frame`。
+
+修复：改为三阶段严格按 dlen 读帧——找 SYNC → 读 4 字节头部获取 dlen → 读满 `5+dlen` 字节返回，中途绝不重同步 `0x5A`。另加 `reset_input_buffer()` 清除串口残留。
+
+**2. TX buffer race (MCU side)**
+
+`send_simple_response` / `send_data_response` / `cmd_flash_read` 在覆盖 `tx_buf` 前不检查前次 TX 是否完成。当两条命令背靠背到达时，新响应会覆盖正在 ISR 逐字节发送的 `tx_buf`，线上出现混合帧乱码。
+
+修复：三个函数在修改 `tx_buf` 前均插入 `while (tx_state != TX_IDLE)` 等待前次发送完毕；`start_tx()` 内用 `ES=0`/`ES=1` 保护 SBUF 写入原子性。
+
 ## System Timer API
 
 ```c

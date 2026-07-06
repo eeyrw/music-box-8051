@@ -42,9 +42,11 @@ static uint8_t calc_csum(uint8_t start, uint8_t count)
 
 static void start_tx(void)
 {
+	ES = 0;
 	tx_pos  = 1;
 	tx_state = TX_SENDING;
 	SBUF = tx_buf[0];
+	ES = 1;
 }
 
 static void build_response_header(uint8_t cmd, uint8_t status, uint8_t len)
@@ -58,6 +60,7 @@ static void build_response_header(uint8_t cmd, uint8_t status, uint8_t len)
 
 static void send_simple_response(uint8_t cmd, uint8_t status)
 {
+	while (tx_state != TX_IDLE);
 	build_response_header(cmd, status, 0);
 	tx_buf[4] = calc_csum(1, 3);
 	tx_len = 5;
@@ -68,6 +71,7 @@ static void send_data_response(uint8_t cmd, uint8_t status,
                                const uint8_t *data, uint8_t len)
 {
 	uint8_t i;
+	while (tx_state != TX_IDLE);
 	build_response_header(cmd, status, len);
 	for (i = 0; i < len; i++)
 		tx_buf[4 + i] = data[i];
@@ -223,6 +227,7 @@ static void cmd_flash_read(void)
 		return;
 	}
 
+	while (tx_state != TX_IDLE);
 	build_response_header(CMD_FLASH_READ, STATUS_OK, len);
 	out = tx_buf + 4;
 	for (i = 0; i < len; i++)

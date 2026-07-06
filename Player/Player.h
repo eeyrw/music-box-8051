@@ -129,6 +129,12 @@ extern void StopDecode(Player *player);
 extern void PlayerPlay(Player *player);
 extern void PlayerStop(Player *player);
 
+#define VEL_CURVE_POWER2  0
+#define VEL_CURVE_POWER06 1
+#define VEL_CURVE_DB20    2
+
+#define VELOCITY_CURVE VEL_CURVE_DB20
+
 extern const __code uint8_t velocityCurve[128];
 
 #endif

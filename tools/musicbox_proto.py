@@ -15,6 +15,8 @@ Commands:
   adc <N>                 Read ADC channel N (0-15)
   voice                   Full 8-voice synthesizer state dump
   sysinfo                 Comprehensive system status (one-shot)
+  note-on <NOTE>          Trigger NoteOn (MIDI note 0-127)
+  note-off <NOTE>         Trigger NoteOff (MIDI note 0-127)
   play                    Start playback
   stop                    Stop playback
   prev                    Previous song
@@ -47,6 +49,8 @@ CMD_AUDIO_INFO     = 0x05
 CMD_ADC_READ       = 0x06
 CMD_VOICE_DUMP     = 0x07
 CMD_SYS_INFO       = 0x08
+CMD_NOTE_ON        = 0x09
+CMD_NOTE_OFF       = 0x0A
 CMD_PLAY           = 0x10
 CMD_STOP           = 0x11
 CMD_PREV           = 0x12
@@ -304,14 +308,9 @@ class MusicBoxClient:
 
     def voice(self):
         data = self._do_cmd(CMD_VOICE_DUMP)
-        names = [
-            "inc_frac", "inc_int", "pos_frac",
-            "pos_int", "env_level", "env_pos",
-            "val", "sample",
-        ]
         for v in range(8):
-            off = v * 10
-            fields = data[off:off + 10]
+            off = v * 11
+            fields = data[off:off + 11]
             inc_frac  = fields[0]
             inc_int   = fields[1]
             pos_frac  = fields[2]
@@ -322,12 +321,13 @@ class MusicBoxClient:
             if val & 0x8000:
                 val -= 0x10000
             sample    = fields[9]
+            midi_note = fields[10]
             active = "ACTIVE" if env_level > 0 else "idle  "
             print(
                 f"  V{v} [{active}] inc={inc_frac:#04x},{inc_int:#04x}  "
                 f"pos={pos_frac:#04x},{pos_int:#06x}  "
                 f"env={env_level:#04x}(lvl) {env_pos:#04x}(step)  "
-                f"val={val:+d}  sample={sample:#04x}"
+                f"val={val:+d}  sample={sample:#04x}  note={midi_note}"
             )
 
     def sysinfo(self):
@@ -357,6 +357,14 @@ class MusicBoxClient:
         print(f"Song:         {cur_song}/{max_songs}")
         print(f"Playing:      {'yes' if playing else 'no'}")
         print(f"Mode:         {mode} ({mode_names.get(mode, '?')})")
+
+    def note_on(self, note):
+        self._do_cmd(CMD_NOTE_ON, struct.pack("B", note))
+        print(f"NoteOn  note={note}")
+
+    def note_off(self, note):
+        self._do_cmd(CMD_NOTE_OFF, struct.pack("B", note))
+        print(f"NoteOff note={note}")
 
     def close(self):
         self.ser.close()
@@ -396,6 +404,14 @@ def main():
             client.voice()
         elif cmd == "sysinfo":
             client.sysinfo()
+        elif cmd == "note-on":
+            if not args.args:
+                sys.exit("note-on requires a MIDI note argument (0-127)")
+            client.note_on(int(args.args[0]))
+        elif cmd == "note-off":
+            if not args.args:
+                sys.exit("note-off requires a MIDI note argument (0-127)")
+            client.note_off(int(args.args[0]))
         elif cmd == "play":
             client.play()
         elif cmd == "stop":

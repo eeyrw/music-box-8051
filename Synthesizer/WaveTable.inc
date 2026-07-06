@@ -1,37 +1,8 @@
-;====================================================================
-; WaveTable.inc — 波表参数常量
-;
-; 波表来源: Celesta C5(L) 采样
-; 基频:     523.2879 Hz
-; 采样率:   32000 Hz
-;
-; 波表结构:
-;   [ 0 ......... 21259 ] 起音段 (攻击/衰减): 21260 个采样点
-;   [ 21260 ..... 21868 ] 循环段 (持续): 609 个采样点
-;   [ 21869 ]             额外采样点: 用于线性插值的尾端保护
-;                           总采样数 = 21870 (WAVETABLE_ACTUAL_LEN)
-;
-; 合成循环逻辑:
-;   当 wavetablePos_int 推进到 >= WAVETABLE_LEN (21869) 时,
-;   回退到起音段末尾 (= WAVETABLE_LEN - WAVETABLE_LOOP_LEN = 21260)
-;   这样在起音段结束后, 循环播放 609 个采样点的循环段
-;
-; 循环段长度计算:
-;   WAVETABLE_LOOP_LEN = WAVETABLE_LEN - WAVETABLE_ATTACK_LEN = 21869 - 21260 = 609
-;
-; 额外 1 个采样点 (21869→21870):
-;   线性插值需要读取 pos 和 pos+1, 所以波表需要多一个采样点
-;   作为插值保护边界: WaveTable[WAVETABLE_ACTUAL_LEN-1]
-;====================================================================
+; Sample name: Square Wave C4
+; Sample's base frequency: 262.22755246353034 Hz
+; Sample's sample rate: 32000 Hz
 
-	; 循环段起始位置 (到达此位置时触发回跳)
-	WAVETABLE_LEN=21869
-
-	; 起音段长度 (播放一次, 不循环)
-	WAVETABLE_ATTACK_LEN=21260
-
-	; 循环段长度 (在此区间内循环)
-	WAVETABLE_LOOP_LEN=609
-
-	; 波表实际存储大小 (含 1 个额外插值保护采样点)
-	WAVETABLE_ACTUAL_LEN=21870
+WAVETABLE_LEN=5427
+WAVETABLE_ATTACK_LEN=5306
+WAVETABLE_LOOP_LEN=121
+WAVETABLE_ACTUAL_LEN=5428

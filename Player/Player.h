@@ -33,7 +33,7 @@
 //       0xFE:      保留
 //       0xFF:      NoteOn 扩展 (下一字节 = note)
 //
-// 目前实现: 忽略 NoteOff, 忽略 velocity
+// 目前实现: 忽略 velocity
 //
 // 串口协议:
 //   完整帧协议: SYNC(0x5A) + CMD + LEN + PAYLOAD + CHECKSUM

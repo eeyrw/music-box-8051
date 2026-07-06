@@ -150,24 +150,41 @@ mixOut 为 16-bit 有符号值。
 #### CMD_VOICE_DUMP (0x07) — 合成器 8 声道完整快照
 
 - 负载: 无
-- 应答: 80 字节，每个 voice 10 字节，共计 8 个 voice
+- 应答: 88 字节，每个 voice 11 字节，共计 8 个 voice
 
 ```
-Per-Voice (10 bytes):
+Per-Voice (11 bytes):
 Offset | Size | 字段
    0   |  1   | increment_frac      (相位增量低字节)
    1   |  1   | increment_int       (相位增量高字节)
-   2   |  1   | wavetablePos_frac   (波表位置低字节)
+   2   |  1   | wavetablePos_frac   (波表位置小数部分)
    3   |  1   | wavetablePos_int (L) (波表位置低字节)
    4   |  1   | wavetablePos_int (H) (波表位置高字节)
    5   |  1   | envelopeLevel       (包络电平, 0=静音)
-   6   |  1   | envelopePos         (包络位置/衰减步数)
+   6   |  1   | envelopePos         (包络位置, 255=sustain, <255=衰减中)
    7   |  1   | val (L)             (输出值低字节)
    8   |  1   | val (H)             (输出值高字节, 有符号16位)
    9   |  1   | sampleVal           (当前采样值)
+  10   |  1   | midiNote            (MIDI 音符编号, NoteOff 查找用)
 ```
 
-Voice 0 位于 data[0..9]，Voice 1 位于 data[10..19]，以此类推。
+Voice 0 位于 data[0..10]，Voice 1 位于 data[11..21]，以此类推。
+
+---
+
+#### CMD_NOTE_ON (0x09) — 触发音符
+
+- 负载: 1 字节 — MIDI 音符编号 (0–127)
+- 应答: 状态码
+- 行为: 调用 `NoteOnAsm(note)`，分配空闲声道并开始 sustain
+
+---
+
+#### CMD_NOTE_OFF (0x0A) — 释放音符
+
+- 负载: 1 字节 — MIDI 音符编号 (0–127)
+- 应答: 状态码
+- 行为: 调用 `NoteOffAsm(note)`，扫描所有声道匹配 `midiNote`，将 `envelopePos` 置 0 触发衰减。释放所有匹配声道（处理同音复触）。
 
 ---
 
@@ -329,8 +346,10 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 <command> [args...]
 | `mem` | — | 栈指针和剩余栈空间 |
 | `audio` | — | mixOut/活跃 voice 数 |
 | `adc` | `<CH>` | 读 ADC 通道 CH (0–15) |
-| `voice` | — | 8 声道合成器状态 dump |
+| `voice` | — | 8 声道合成器状态 dump (含 midiNote) |
 | `sysinfo` | — | 综合系统状态 (含 uptime/audio/song) |
+| `note-on` | `<NOTE>` | 触发 NoteOn (0–127) |
+| `note-off` | `<NOTE>` | 触发 NoteOff 释放 (0–127) |
 | `play` | — | 开始播放 |
 | `stop` | — | 停止播放 |
 | `prev` | — | 上一曲 |
@@ -357,6 +376,11 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 sysinfo
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 play
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 next
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 song 3
+
+# 合成器测试
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-on 60   # 触发 C5
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 voice         # 查看声道
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-off 60  # 释放 C5
 
 # SPI Flash 操作
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 flash-info

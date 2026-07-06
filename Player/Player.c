@@ -6,7 +6,8 @@
 //     → SSPL header 解析 (入口表)
 //       → PlayScore(sscrScore) 初始化 SSCR 解码器
 //         → SSCR_DecodeProcess() 逐 tick 解码事件流
-//           → NoteOnAsm(note) 触发音符
+//         → NoteOnAsm(note) 触发音符
+//         → NoteOffAsm(note) 关闭音符
 //
 // 调度时序:
 //   GetSysMs() 获取系统毫秒时间 (Timer0 ISR 驱动)
@@ -99,6 +100,8 @@ static uint8_t sscr_dispatch_event(SSCR_Player *d, uint8_t byte)
             if (!sscr_read_byte(d, &dummy))
                 return 0;
         }
+        note = (uint8_t)((int)note - d->totalTranspose);
+        NoteOffAsm(note);
     }
 
     return 1;
@@ -146,6 +149,9 @@ static void SSCR_DecodeProcess(Player *player)
             d->nextEventMs += (uint32_t)delta * 8;
         }
     }
+
+    if (d->status == STATUS_STOP)
+        SynthReleaseAllAsm();
 }
 
 /* ================================================================
@@ -317,6 +323,7 @@ void PlayScore(Player *player, ScoreStream *sspl, uint32_t offset)
 void StopDecode(Player *player)
 {
     player->decoder.status = STATUS_STOP;
+    SynthReleaseAllAsm();
 }
 
 void PlayerProcess(Player *player)

@@ -15,6 +15,7 @@ typedef struct _SoundUnit
 	uint8_t envelopePos;
 	int16_t val;
 	int8_t sampleVal;
+	uint8_t midiNote;
 } SoundUnit;
 
 typedef struct _SoundUnitSplit
@@ -27,6 +28,7 @@ typedef struct _SoundUnitSplit
 	uint8_t envelopePos;
 	int16_t val;
 	int8_t sampleVal;
+	uint8_t midiNote;
 } SoundUnitSplit;
 
 typedef union _SoundUnitUnion
@@ -46,12 +48,15 @@ extern void SynthInit(Synthesizer *synth);
 
 #ifdef RUN_TEST
 extern void NoteOnC(uint8_t note);
+extern void NoteOffC(uint8_t note);
 extern void SynthC(void);
 extern void GenDecayEnvlopeC(void);
 #endif
 
 extern void NoteOnAsm(uint8_t note);
+extern void NoteOffAsm(uint8_t note);
 extern void GenDecayEnvlopeAsm(void);
+extern void SynthReleaseAllAsm(void);
 extern void SynthAsm(void);
 
 #ifdef RUN_TEST

@@ -364,11 +364,11 @@ static void dispatch_command(void)
 
 	case CMD_VOICE_DUMP:
 	{
-		uint8_t i, j, buf[80];
+		uint8_t i, j, buf[88];
 		for (i = 0; i < POLY_NUM; i++)
 		{
 			SoundUnitSplit *su = &synthForAsm.SoundUnitUnionList[i].split;
-			j = i * 10;
+			j = i * 11;
 			buf[j + 0] = su->increment_frac;
 			buf[j + 1] = su->increment_int;
 			buf[j + 2] = su->wavetablePos_frac;
@@ -379,8 +379,9 @@ static void dispatch_command(void)
 			buf[j + 7] = (uint8_t)(su->val);
 			buf[j + 8] = (uint8_t)(su->val >> 8);
 			buf[j + 9] = (uint8_t)(su->sampleVal);
+			buf[j + 10] = su->midiNote;
 		}
-		send_data_response(CMD_VOICE_DUMP, STATUS_OK, buf, 80);
+		send_data_response(CMD_VOICE_DUMP, STATUS_OK, buf, 88);
 		break;
 	}
 
@@ -416,6 +417,30 @@ static void dispatch_command(void)
 		buf[13] = p->scheduler.schedulerMode;
 
 		send_data_response(CMD_SYS_INFO, STATUS_OK, buf, 14);
+		break;
+	}
+
+	case CMD_NOTE_ON:
+	{
+		if (pkt_len < 1)
+		{
+			send_response_err(CMD_NOTE_ON, STATUS_BAD_LEN);
+			break;
+		}
+		NoteOnAsm(pkt_data[0]);
+		send_response_ok(CMD_NOTE_ON);
+		break;
+	}
+
+	case CMD_NOTE_OFF:
+	{
+		if (pkt_len < 1)
+		{
+			send_response_err(CMD_NOTE_OFF, STATUS_BAD_LEN);
+			break;
+		}
+		NoteOffAsm(pkt_data[0]);
+		send_response_ok(CMD_NOTE_OFF);
 		break;
 	}
 

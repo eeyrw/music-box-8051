@@ -15,8 +15,8 @@
 ;   0x10-0x1A: C 编译器自动分配的 DSEG 变量 (sysMsPre + sysMs, 5 字节)
 ;   0x1B-0x1F: 未使用 (5 字节)
 ;   0x20:      位寄存器
-;   0x21-0x73: Synthesizer 结构体 (83 字节 = 8×10 + 3)
-;   0x74-0xFF: C 栈 (140 字节)
+;   0x21-0x7B: Synthesizer 结构体 (91 字节 = 8×11 + 3)
+;   0x7C-0xFF: C 栈 (132 字节)
 ;
 ;   Player 结构体 (~34 字节) 由 SDCC 分配到 XRAM, 不占用 DATA
 ;====================================================================
@@ -31,9 +31,10 @@
 	; ---- 包络参数 ----
 	ENVELOP_LEN=256
 	POLY_NUM=8
+	RELEASE_STEP=6
 
 ;====================================================================
-; SoundUnit 结构体字段偏移 (每个声道 10 字节)
+; SoundUnit 结构体字段偏移 (每个声道 11 字节)
 ;
 ; 对应 C 结构体 SoundUnitSplit:
 ;   typedef struct _SoundUnitSplit {
@@ -45,6 +46,7 @@
 ;       uint8_t  envelopePos;         // 偏移 6: 包络表索引 0-255
 ;       int16_t  val;                 // 偏移 7-8: 当前输出值
 ;       int8_t   sampleVal;           // 偏移 9: 波形采样值 (调试用)
+;       uint8_t  midiNote;            // 偏移 10: MIDI 音符编号 (NoteOff 查找用)
 ;   } SoundUnitSplit;
 ;
 ;   typedef union _SoundUnitUnion {
@@ -59,7 +61,7 @@
 ; 这一点与直观预期可能相反——SDCC 对 8051 使用大端存储。
 ;====================================================================
 
-	unitSz=10                          ; 每个声道的字节数
+	unitSz=11                          ; 每个声道的字节数
 
 	; ---- SoundUnitSplit 字段偏移 ----
 	pIncrement_frac=0                  ; 相位增量小数部分 (uint8_t)
@@ -72,23 +74,24 @@
 	pVal_l=7                           ; 当前输出值低字节 (int16_t)
 	pVal_h=8                           ; 当前输出值高字节 (int16_t)
 	pSampleVal=9                       ; 波形采样值 (int8_t, 调试用)
+	pMidiNote=10                       ; MIDI 音符编号 (uint8_t)
 
 ;====================================================================
-; Synthesizer 结构体字段偏移 (83 字节)
+; Synthesizer 结构体字段偏移 (91 字节)
 ;
 ;   typedef struct _Synthesizer {
-;       SoundUnitUnion SoundUnitUnionList[POLY_NUM];  // 偏移 0-79 (8×10 字节)
-;       int16_t  mixOut;                              // 偏移 80-81: 混合输出
-;       uint8_t  lastSoundUnit;                       // 偏移 82: 下一个声道编号
+;       SoundUnitUnion SoundUnitUnionList[POLY_NUM];  // 偏移 0-87 (8×11 字节)
+;       int16_t  mixOut;                              // 偏移 88-89: 混合输出
+;       uint8_t  lastSoundUnit;                       // 偏移 90: 下一个声道编号
 ;   } Synthesizer;
 ;====================================================================
 
-	pMixOut_l=unitSz*POLY_NUM          ; 混合输出低字节 (80 = 8×10)
-	pMixOut_h=unitSz*POLY_NUM+1       ; 混合输出高字节 (81)
-	pLastSoundUnit=unitSz*POLY_NUM+2  ; 下一声道编号 (82)
+	pMixOut_l=unitSz*POLY_NUM          ; 混合输出低字节 (88 = 8×11)
+	pMixOut_h=unitSz*POLY_NUM+1       ; 混合输出高字节 (89)
+	pLastSoundUnit=unitSz*POLY_NUM+2  ; 下一声道编号 (90)
 
 ; ---- Synthesizer 在 DATA 内存的绝对地址 ----
 ;     Player 已移至 XRAM (SDCC 自动分配), 所以此处不再依赖 PlayrAbsAddr
 ;     0x21 与原版 master 一致, 紧接在 DSEG 变量之后
 	SynthAbsAddr = 0x21
-	SynthTotalSize = unitSz*POLY_NUM+3 ; 83
+	SynthTotalSize = unitSz*POLY_NUM+3 ; 91

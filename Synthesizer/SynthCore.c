@@ -15,9 +15,10 @@ void SynthInit(Synthesizer *synth)
 		soundUnionList[i].combine.increment = 0;
 		soundUnionList[i].combine.wavetablePos_frac = 0;
 		soundUnionList[i].combine.wavetablePos_int = 0;
-		soundUnionList[i].combine.envelopeLevel = 0;
-		soundUnionList[i].combine.envelopePos = 0;
-		soundUnionList[i].combine.val = 0;
+	soundUnionList[i].combine.envelopeLevel = 0;
+	soundUnionList[i].combine.envelopePos = 255;
+	soundUnionList[i].combine.val = 0;
+		soundUnionList[i].combine.midiNote = 0;
 	}
 	synth->lastSoundUnit = 0;
 	synth->mixOut = 0;
@@ -41,8 +42,9 @@ void NoteOnAsmP(uint8_t note)
 	synthForAsm.SoundUnitUnionList[idx].combine.increment = WaveTable_Increment[note & 0x7F];
 	synthForAsm.SoundUnitUnionList[idx].combine.wavetablePos_frac = 0;
 	synthForAsm.SoundUnitUnionList[idx].combine.wavetablePos_int = 0;
-	synthForAsm.SoundUnitUnionList[idx].combine.envelopePos = 0;
+	synthForAsm.SoundUnitUnionList[idx].combine.envelopePos = 255;
 	synthForAsm.SoundUnitUnionList[idx].combine.envelopeLevel = 255;
+	synthForAsm.SoundUnitUnionList[idx].combine.midiNote = note;
 	// enable_interrupts();
 
 	idx++;
@@ -56,15 +58,32 @@ void GenDecayEnvlopeAsmP(void)
 	__data SoundUnitUnion *soundUnionList = &(synthForAsm.SoundUnitUnionList[0]);
 	for (uint8_t i = 0; i < POLY_NUM; i++)
 	{
-		if (soundUnionList[i].split.wavetablePos_int >= WAVETABLE_ATTACK_LEN &&
-			(soundUnionList[i].split.envelopePos < (sizeof(EnvelopeTable) - 1)))
+		if (soundUnionList[i].split.envelopePos < (sizeof(EnvelopeTable) - 1))
 		{
 			uint8_t p = soundUnionList[i].split.envelopePos;
 			soundUnionList[i].split.envelopeLevel = EnvelopeTable[p];
-			soundUnionList[i].split.envelopePos += 1;
+			uint16_t newPos = (uint16_t)p + 6;
+			if (newPos >= 255)
+				newPos = 255;
+			soundUnionList[i].split.envelopePos = (uint8_t)newPos;
 		}
 	}
 }
+
+void NoteOffAsmP(uint8_t note)
+{
+	SoundUnitUnion *soundUnionList = &(synthForAsm.SoundUnitUnionList[0]);
+	for (uint8_t i = 0; i < POLY_NUM; i++)
+	{
+		if (soundUnionList[i].combine.envelopeLevel > 0 &&
+			soundUnionList[i].combine.midiNote == note)
+		{
+			soundUnionList[i].combine.envelopePos = 0;
+			return;
+		}
+	}
+}
+
 void NoteOnC(uint8_t note)
 {
 	uint8_t idx = selectVoice(&synthForC);
@@ -73,14 +92,29 @@ void NoteOnC(uint8_t note)
 	synthForC.SoundUnitUnionList[idx].combine.increment = WaveTable_Increment[note & 0x7F];
 	synthForC.SoundUnitUnionList[idx].combine.wavetablePos_frac = 0;
 	synthForC.SoundUnitUnionList[idx].combine.wavetablePos_int = 0;
-	synthForC.SoundUnitUnionList[idx].combine.envelopePos = 0;
+	synthForC.SoundUnitUnionList[idx].combine.envelopePos = 255;
 	synthForC.SoundUnitUnionList[idx].combine.envelopeLevel = 255;
+	synthForC.SoundUnitUnionList[idx].combine.midiNote = note;
 	// enable_interrupts();
 
 	idx++;
 	if (idx == POLY_NUM)
 		idx = 0;
 	synthForC.lastSoundUnit = idx;
+}
+
+void NoteOffC(uint8_t note)
+{
+	SoundUnitUnion *soundUnionList = &(synthForC.SoundUnitUnionList[0]);
+	for (uint8_t i = 0; i < POLY_NUM; i++)
+	{
+		if (soundUnionList[i].combine.envelopeLevel > 0 &&
+			soundUnionList[i].combine.midiNote == note)
+		{
+			soundUnionList[i].combine.envelopePos = 0;
+			return;
+		}
+	}
 }
 
 void SynthC(void)
@@ -112,12 +146,14 @@ void GenDecayEnvlopeC(void)
 	__xdata SoundUnitUnion *soundUnionList = &(synthForC.SoundUnitUnionList[0]);
 	for (uint8_t i = 0; i < POLY_NUM; i++)
 	{
-		if (soundUnionList[i].split.wavetablePos_int >= WAVETABLE_ATTACK_LEN &&
-			(soundUnionList[i].split.envelopePos < (sizeof(EnvelopeTable) - 1)))
+		if (soundUnionList[i].split.envelopePos < (sizeof(EnvelopeTable) - 1))
 		{
 			uint8_t p = soundUnionList[i].split.envelopePos;
 			soundUnionList[i].split.envelopeLevel = EnvelopeTable[p];
-			soundUnionList[i].split.envelopePos += 1;
+			uint16_t newPos = (uint16_t)p + 6;
+			if (newPos >= 255)
+				newPos = 255;
+			soundUnionList[i].split.envelopePos = (uint8_t)newPos;
 		}
 	}
 }

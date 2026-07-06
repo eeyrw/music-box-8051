@@ -46,9 +46,9 @@ Memory model is **large** (xdata used). Stack-auto is enabled (`--stack-auto`), 
   0x00–0x07      8B      Register Bank 0–3 (PSW 选择)
   0x08–0x1F      —       Register Bank 1 (ISR 专用)
   0x20–0x2F      16B     位寻址区
-  0x21            1B     Synthesizer struct 起始 (绝对地址)
-  0x30–0x7F      80B     用户 DATA/堆栈
-  0x80–0xFF     128B     IDATA (间接寻址) + SFR (直接寻址)
+   0x21            1B     Synthesizer struct 起始 (绝对地址)
+   0x21–0x7B       91B    Synthesizer 结构体 (8×11 + 3)
+   0x7C–0xFF       132B   C 栈
 ```
 
 #### IRC 时钟注意事项
@@ -279,30 +279,48 @@ while (1) {
 - Timer0 ISR: 32000 Hz, 每 32 个 tick (1ms) 递增 `sysMs` (32-bit)
 - Player 使用 `GetSysMs()` 驱动乐谱事件调度和包络衰减
 - 乐谱 delta (raw tick) × 8 = 毫秒 (TickPerSecond=125, 1000/125=8ms/tick)
-- 包络衰减: 每 3ms 推进一格
+- 包络衰减: 每 3ms 推进 `RELEASE_STEP` (6) 格，约 128ms 完成衰减
 
 ### Fixed memory layout (critical — do not change blindly)
 
 - **Player struct**: SDCC auto-allocated in XRAM (~39 bytes). `SSCR_Player` (19B) + `PlayScheduler` (24B).
-- **Synthesizer struct**: absolute DATA `0x21`, 83 bytes (`SynthCore.inc`, declared in `SynthCoreAsm.s` via `.org`)
+- **Synthesizer struct**: absolute DATA `0x21`, 91 bytes (`SynthCore.inc`, declared in `SynthCoreAsm.s` via `.org`)
 - **sysMsPre + sysMs**: DSEG allocated by `UpdateTick.inc` (5 bytes DATA at compiler-assigned address, 0x10-0x1A)
 - **SPI 缓存**: 1024 字节 XRAM (`SpiFlash.c`)
 - **协议缓冲**: RX ring 256B + pkt_data 260B + tx_buf 264B ≈ 780B XRAM (`Protocol.c`)
-- **8 voices × 10 bytes** each: `increment_frac(0)`, `increment_int(1)`, `wavetablePos_frac(2)`, `wavetablePos_int_l(3)`, `wavetablePos_int_h(4)`, `envelopeLevel(5)`, `envelopePos(6)`, `val_l(7)`, `val_h(8)`, `sampleVal(9)`
+- **8 voices × 11 bytes** each: `increment_frac(0)`, `increment_int(1)`, `wavetablePos_frac(2)`, `wavetablePos_int_l(3)`, `wavetablePos_int_h(4)`, `envelopeLevel(5)`, `envelopePos(6)`, `val_l(7)`, `val_h(8)`, `sampleVal(9)`, `midiNote(10)`
 - ISR uses **register bank 1** (`psw = 0x08`) so R0-R7 do not conflict with C code's bank 0
 
 ### Wavetable synthesis algorithm
 
-8-bit signed Celesta C5 sample (21870 samples). Base frequency ~523 Hz, sample rate 32000 Hz.
+8-bit signed PCM sample, base frequency and sample count defined in `WaveTable.h`/`.inc` (recent: Square Wave C4, 5428 samples). Sample rate 32000 Hz.
 
 Per-voice per-tick:
 1. Read `WaveTable[pos]` + `WaveTable[pos+1]`, linear-interpolate with fractional phase
 2. Multiply interpolated sample (signed) × envelope level (0-255 unsigned), divide by 256
 3. Accumulate into 16-bit `mixOut`
 4. Phase advance: `pos_frac += inc_frac; pos_int += inc_int + carry`
-5. Loop point: when `pos_int >= 21869`, subtract 609
+5. Loop point: when `pos_int >= WAVETABLE_LEN`, subtract `WAVETABLE_LOOP_LEN`
 
 After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), write to `PWMA_CCR2` (PWM DAC output).
+
+### Envelope / NoteOff (2026-07 redesign)
+
+**Sustain-release model** — notes hold indefinitely at full volume, NoteOff triggers decay:
+
+| State | envelopePos | envelopeLevel | Trigger |
+|-------|:-----------:|:-------------:|---------|
+| Sustain | 255 | 255 (from table) | NoteOn |
+| Decaying | 0..254 | EnvelopeTable[pos] | NoteOff |
+| Silent | 255 | 0 | decay end or release |
+
+**GenDecayEnvlopeAsm** runs every 3ms, advances `envelopePos` by `RELEASE_STEP` (6) for any voice where `envelopePos < 255`. When envelopePos reaches 255 (≈128ms total), envelopeLevel is forced to 0.
+
+**NoteOffAsm** scans all 8 voices for matching `midiNote`, sets `envelopePos = 0` for **all matches** (handles same-note retrigger). Does not modify wavetablePos — no audio discontinuity.
+
+**SynthReleaseAllAsm** sets `envelopeLevel = 0, envelopePos = 255` on all 8 voices. Called on Stop, Next, Prev, and EndOfScore.
+
+**Envelope constants** (`SynthCore.inc`): `ENVELOP_LEN=256`, `RELEASE_STEP=6`.
 
 ### Score format — SSPL + SSCR
 
@@ -342,8 +360,8 @@ Offset | Size | Field
 - **Event bytes** (bit7=1):
   - `0xC0–0xFD`: NoteOn direct (note = byte & 0x3F, range 0–61)
   - `0xFF` + next_byte: NoteOn extended (full note 0–127)
-  - `0x80–0xBD`: NoteOff direct (skipped — not used by current player)
-  - `0xBF` + next_byte: NoteOff extended (skipped)
+  - `0x80–0xBD`: NoteOff direct (note = byte & 0x3F, range 0–61)
+  - `0xBF` + next_byte: NoteOff extended (full note 0–127)
   - `0xBE`: EndOfScore
   - `0xFE`: Reserved → stop
 - Pitch restoration: `playNote = encodedNote - TotalTranspose`
@@ -354,10 +372,10 @@ Offset | Size | Field
 SSCR event byte → sscr_dispatch_event()
   → decode note (direct or extended)
   → apply totalTranspose inverse
-  → NoteOnAsm(MIDI_note)
+  → NoteOnAsm(MIDI_note) [or NoteOffAsm(MIDI_note) for NoteOff]
 ```
 
-Velocity and NoteOff are parsed but not used by the current synth.
+Velocity is parsed but not used by the current synth.
 
 ### Multi-score scheduler
 
@@ -400,8 +418,10 @@ Full framed binary protocol documented in `Protocol.h`. Summary:
 | MEM_INFO | 0x04 | Stack pointer, free stack bytes |
 | AUDIO_INFO | 0x05 | mixOut, active voice count, lastSoundUnit |
 | ADC_READ | 0x06 | Read ADC channel (uint16_t) |
-| VOICE_DUMP | 0x07 | Full 8-voice state snapshot (80 bytes) |
+| VOICE_DUMP | 0x07 | Full 8-voice state snapshot (88 bytes, 11/voice incl midiNote) |
 | SYS_INFO | 0x08 | Comprehensive system status (uptime, backend, audio, voices, song, mode — 14 bytes) |
+| NOTE_ON | 0x09 | Trigger NoteOn (payload: 1 byte MIDI note) |
+| NOTE_OFF | 0x0A | Trigger NoteOff release (payload: 1 byte MIDI note) |
 | PLAY/STOP/PREV/NEXT | 0x10-13 | Playback control |
 | SET_SONG | 0x14 | Switch to song index |
 | GET_STATUS | 0x15 | Current song, playing state |
@@ -462,7 +482,7 @@ Source code is organized into three modules:
 │   └── Player.{c,h}        (SSPL container, SSCR decoder, PlayScheduler)
 ├── Synthesizer/            Audio synthesis engine (wave + envelope + ISR)
 │   ├── SynthCore.{h,c}     Synthesizer/SoundUnit struct definitions + C init
-│   ├── SynthCoreAsm.s      NoteOnAsm + GenDecayEnvlopeAsm (DATA 0x21)
+│   ├── SynthCoreAsm.s      NoteOnAsm + NoteOffAsm + GenDecayEnvlopeAsm + SynthReleaseAllAsm (DATA 0x21)
 │   ├── SynthCore.inc       Struct offsets, POLY_NUM, unitSz, constants
 │   ├── Synth.inc           _SynthAsm — 8-voice ISR hot path
 │   ├── PeriodTimer.s       Timer0 ISR entry (bank 1, includes Synth+UpdateTick)
@@ -489,6 +509,17 @@ Include paths: `-IPlayer -ISynthesizer` (C and ASM). Both directories are always
 
 - **FIXED**: `pWavetablePos_frac` was never zeroed on note-on due to a copy-paste error (the `mov a,#pEnvelopePos` appeared twice, missing the `#pWavetablePos_frac` field). This left stale fractional phase from the previous voice on slot reuse, causing pitch drift. Corrected 2026-07.
 - **Lines 108-143**: repeated `mov a,#field; add a,r0; mov r1,a; mov @r1,value` pattern. Fields are sequential (offsets 0,1,2,3,4,5,6), so incrementing `r0` linearly and using `mov @r0,val` is shorter (but `r0` is needed for base address). Alternative: use a single DPTR copy loop with INC.
+
+### SynthCoreAsm.s (NoteOffAsm)
+
+- Scans all 8 voices for `envelopeLevel > 0 && midiNote == dpl`, sets `envelopePos = 0` for all matches
+- Does NOT modify wavetablePos — no audio discontinuity on release
+- Continues scan after match: same-note retrigger creates multiple voices with same midiNote
+
+### SynthCoreAsm.s (SynthReleaseAllAsm)
+
+- Sets `envelopeLevel = 0, envelopePos = 255` on all 8 voices
+- Called on Stop, Next, Prev, and EndOfScore via `SSCR_DecodeProcess`
 
 ### UpdateTick.inc
 

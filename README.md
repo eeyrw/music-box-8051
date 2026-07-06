@@ -1,10 +1,10 @@
 # Music Box 8051
 
-An 8-voice polyphonic wavetable synthesizer running on an STC8H3K64S2 microcontroller (8051-compatible). Plays musical pieces from flash ROM using the SSPL/SSCR score format, driving audio output through a PWM DAC and a visualization LED/galvo via a second PWM channel.
+An 8-voice polyphonic wavetable synthesizer running on an STC8H3K64S2 microcontroller (8051-compatible). Plays musical pieces from flash ROM or external SPI NOR flash using the SSPL/SSCR score format, driving audio output through a PWM DAC and a visualization LED/galvo via a second PWM channel.
 
 ## Hardware
 
-- **MCU**: STC8H3K64S2 (64 KB flash, 256 B internal RAM, 2 KB XRAM)
+- **MCU**: STC8H3K64S2 (64 KB flash, 256 B internal RAM, 3 KB XRAM)
 - **Clock**: 22.1184 MHz (1T mode)
 - **Audio output**: PWM channel 2 on P1.2/P1.3 — 256-period PWM acting as an 8-bit DAC, updated at 32 kHz
 - **Visualization**: PWM channel 4 on P1.6/P1.7 — complementary output, driven by `abs(mixOut) << 1`
@@ -14,11 +14,13 @@ An 8-voice polyphonic wavetable synthesizer running on an STC8H3K64S2 microcontr
 Requires [SDCC](http://sdcc.sourceforge.net/) (Small Device C Compiler) ≥ 4.0:
 
 ```bash
-# Install on Ubuntu/Debian
 sudo apt install sdcc
 
-# Build
+# Internal flash build (scores embedded in MCU flash)
 make
+
+# External SPI flash build (scores pre-programmed on SPI NOR flash)
+make STORAGE=spi
 
 # Clean
 make clean
@@ -31,25 +33,45 @@ Outputs:
 
 ## Flash
 
-Uses [stcgal](https://github.com/grigorig/stcgal) to program via USB-TTL serial adapter:
+Uses [stcgal](https://github.com/grigorig/stcgal) to program via USB-TTL serial adapter. The MCU is soft-reset into ISP mode automatically via `tools/boot.py`:
 
 ```bash
-# Install stcgal
 pip3 install stcgal
 
 # Flash (default port /dev/ttyUSB0, protocol stc8d)
 make flash
 
+# SPI build
+make flash STORAGE=spi
+
 # Custom port/protocol
 make flash STCGAL_PORT=/dev/ttyUSB1 STCGAL_PROTO=stc8h
 ```
+
+## Serial Protocol
+
+Full framed binary protocol at 115200 baud: `SYNC(0x5A) | CMD | LEN | [PAYLOAD] | CHECKSUM`. Response returns `CMD|0x80` with status byte.
+
+```bash
+# Python CLI tool
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 ping
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 info
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 status
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 next
+
+# SPI flash read/write
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 flash-info
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 flash-read 0x0000 256 | xxd
+```
+
+See `Protocol.h` for complete command table and `tools/musicbox_proto.py --help`.
 
 ## Architecture
 
 ```
                     ┌─────────────────────────┐
-                    │     Timer0 ISR @ 32kHz   │
-                    │      (Bank 1 registers)  │
+                    │    Timer0 ISR @ 32kHz    │
+                    │     (Bank 1 registers)   │
                     │                          │
                     │  ┌────────────────────┐  │
                     │  │  SynthAsm          │  │
@@ -61,17 +83,19 @@ make flash STCGAL_PORT=/dev/ttyUSB1 STCGAL_PROTO=stc8h
                     │  └────────────────────┘  │
                     │  ┌────────────────────┐  │
                     │  │  UpdateTick        │  │
-                    │  │  · currentTick++   │  │
+                    │  │  · sysMs++         │  │
                     │  └────────────────────┘  │
                     └─────────────────────────┘
                               ↕ mixOut
                     ┌─────────────────────────┐
-                     │  Main Loop (Bank 0)     │
-                     │  · SSCR_DecodeProcess() │
-                     │    - Score sequencing   │
-                     │  · PlaySchedulerProcess │──→ PWMA_CCR4 (P1.6/P1.7) Visual
-                     │    - Auto-advance/stop  │
-                     │  · VisualizeSound()     │
+                    │  Main Loop (Bank 0)      │
+                    │  · SSCR_DecodeProcess()  │
+                    │    - Score sequencing    │
+                    │  · PlaySchedulerProcess  │──→ PWMA_CCR4 (P1.6/P1.7) Visual
+                    │    - Auto-advance/stop   │
+                    │  · VisualizeSound()      │
+                    │  · Proto_Process()       │
+                    │    - Serial protocol     │
                     └─────────────────────────┘
 ```
 
@@ -80,8 +104,16 @@ make flash STCGAL_PORT=/dev/ttyUSB1 STCGAL_PROTO=stc8h
 1. **Wavetable**: 21,870-sample 8-bit signed Celesta C5 recording at 32 kHz, with 21,260-sample attack section and 609-sample sustain loop
 2. **Phase accumulator**: 16.8 fixed-point per voice, indexed by MIDI note number through a precomputed `WaveTable_Increment` table
 3. **Linear interpolation**: Between adjacent samples using the 8-bit fractional phase component
-4. **Envelope**: 256-entry decay table applied after the phase passes the attack section; advances once every 100 ticks (~320 Hz)
+4. **Envelope**: 256-entry decay table applied after the phase passes the attack section; advances every 3ms via `GetSysMs()`
 5. **Mixing**: 8 voices summed into a 16-bit accumulator, then `>>=1`, clipped to [-128, 127], and DC-shifted by +128 for unsigned 8-bit PWM
+
+### Timing
+
+- Timer0 ISR at 32000 Hz, `sysMs` incremented every 32 ticks (1ms)
+- `GetSysMs()` returns 32-bit millisecond uptime, used for all timing
+- Score events: `nextEventMs += delta × 8` (TickPerSecond=125 → 8ms per tick)
+- Envelope decay: every 3ms
+- SPI flash operations use `GetSysMs()` for accurate busy-wait timeouts
 
 ### Voice allocation
 
@@ -89,75 +121,52 @@ Round-robin across 8 voices with interrupt-safe state updates. Note-on resets ph
 
 ### Score format — SSPL + SSCR
 
-Scores are stored as a single `__code unsigned char Score[]` in flash using the SSPL container format containing multiple SSCR scores. The format is generated by [midi-to-simplescore](https://github.com/eeyrw/midi-to-simplescore).
+Scores use the **SSPL** container format containing multiple **SSCR** scores. On internal builds, scores are in MCU flash (`scoreList.c`). On SPI builds, scores are pre-programmed on external SPI NOR flash via the serial protocol.
 
-**SSPL container** (12-byte header + entry table):
-```
-Offset | Size | Field
--------|------|-------
-0      | 4    | Magic "SSPL"
-4      | 1    | Version = 0x01
-5      | 1    | Flags
-6      | 2    | Count (uint16 LE)
-8      | 4    | Reserved
-12     | 8×N  | Entry table: offset(4LE) + size(4LE)
-```
-
-**SSCR per score** (13-byte header + event stream):
-```
-Offset | Size | Field
--------|------|-------
-0      | 4    | Magic "SSCR"
-4      | 1    | Version = 0x03
-5      | 1    | Flags
-6      | 2    | TickPerSecond (uint16 LE)
-8      | 4    | DataLength (uint32 LE)
-12     | 1    | TotalTranspose (int8)
-13     | var  | Event data (delta chunks + event bytes)
-```
-
-Events: `0xC0-0xFD` NoteOn direct, `0xFF`+byte NoteOn extended, `0xBE` EndOfScore. Pitch is restored via `playNote = encodedNote - TotalTranspose`.
-
-### Generating scores
+Format details in `Player.h`. Generated by [midi-to-simplescore](https://github.com/eeyrw/midi-to-simplescore):
 
 ```bash
-# Install the tool
 pip3 install -e /path/to/midi-to-simplescore
 
-# Generate scoreList.c from MIDI files
+# Generate scoreList.c from MIDI files (internal flash)
 python3 SSPL_Packer.py song1.mid song2.mid ... \
   -c WavetableSynthesizer/scoreList.c \
   --template 8051_sdcc --tickPerSecond 125 --voiceCenterNote 60
 ```
 
-`--tickPerSecond 125` is required: Timer0 at 32000 Hz, `currentTick>>8` gives 125 ticks/sec.
+`--tickPerSecond 125` is required: TIMER0 at 32000 Hz, delta × 8 = ms (1000/125 = 8ms per tick).
 
 ### Multi-score scheduler
 
-Three playback modes:
+Three playback modes controlled by serial protocol or `main.c`:
 
 | Mode | Behavior |
 |------|----------|
 | `MODE_ORDER_PLAY` | Loop all songs forever |
 | `MODE_LIST_ONCE` | Play all songs once, then stop |
-| `MODE_SINGLE_SONG` | Play one song, then stop (UART can override) |
+| `MODE_SINGLE_SONG` | Play one song, stop (serial can override) |
 
 On startup, a random song is selected using ADC noise as entropy.
 
-UART commands at 115200 baud:
-- `0xFE` — previous song
-- `0xFD` — next song
-- `0xDD` — software reset
+## Storage Backends
+
+Storage is abstracted behind `Storage.h` — Player does not know the backend:
+
+| Backend | Files | Description |
+|---------|-------|-------------|
+| Internal | `Storage_Internal.c` + `scoreList.c` | `__code` flash via `movc a,@a+dptr` |
+| SPI | `Storage_SPI.c` + `SpiFlash.c` | External SPI NOR via GPIO bit-bang |
+
+Select via `make` (internal) or `make STORAGE=spi` (SPI).
+
+`SpiFlash.c` provides generic NOR flash operations (read, write, erase, JEDEC ID) with a 1KB XRAM read cache and ms-based busy-wait timeouts. Used by both the ScoreStream layer and the serial protocol for flash programming.
 
 ## Verification Suite
 
 A C-vs-Assembly comparison test framework is included for validating synthesis correctness:
 
 ```makefile
-# In Makefile, change DEFS:
-# DEFS = NO_RUN_TEST   → remove
-# DEFS += RUN_TEST     → add
-# Then rebuild
+# In Makefile: remove NO_RUN_TEST, add RUN_TEST
 make clean && make
 ```
 
@@ -170,9 +179,14 @@ The test feeds 9 notes, runs 10,000 iterations, and compares every voice field b
 
 ```
 ├── main.c                           Entry point, main loop
-├── Bsp.c                            Hardware init (clock, UART, Timer0, PWM, ADC)
+├── Bsp.c / Bsp.h                    Hardware init (clock, UART, Timer0, PWM, ADC)
 ├── UartRedirect.c                   putchar/getchar over UART1
+├── Protocol.c / Protocol.h          Serial protocol (frame, commands, flash ops)
 ├── RegisterDefine.h                 MCU selector (STC8 vs STC15F)
+├── Storage.h                        ScoreStream abstraction (opaque buffer)
+├── Storage_Internal.c               Internal __code flash backend
+├── Storage_SPI.c                    SPI flash ScoreStream wrapper
+├── SpiFlash.c / SpiFlash.h          Generic SPI NOR flash driver (bit-bang + cache)
 ├── Makefile                         SDCC build system + stcgal flash target
 │
 ├── WavetableSynthesizer/
@@ -181,8 +195,9 @@ The test feeds 9 notes, runs 10,000 iterations, and compares every voice field b
 │   ├── SynthCoreAsm.s               NoteOnAsm + GenDecayEnvlopeAsm
 │   ├── SynthCore.c                  C synthesis reference (test only)
 │   ├── SynthCore.h                  SoundUnit/Synthesizer struct definitions
-│   ├── UpdateTick.inc               32-bit tick counter (ISR)
+│   ├── UpdateTick.inc               sysMs millisecond counter (ISR)
 │   ├── PeriodTimer.s                Timer0 ISR entry (bank switch, include Synth+UpdateTick)
+│   ├── PeriodTimer.h                sysMs extern declarations
 │   ├── Player.c                     SSCR decoder + SSPL container + multi-song scheduler
 │   ├── Player.h                     Player struct + scheduler API
 │   ├── WaveTable.c                  Celesta C5 wavetable data (21,870 samples)
@@ -191,6 +206,10 @@ The test feeds 9 notes, runs 10,000 iterations, and compares every voice field b
 │   ├── EnvelopeTable.h              Envelope table declaration
 │   ├── AlgorithmTest.c              C-vs-ASM verification suite (RUN_TEST only)
 │   └── scoreList.c                  SSPL container with multiple SSCR scores
+│
+├── tools/
+│   ├── musicbox_proto.py            Full serial protocol CLI client
+│   └── boot.py                      Send soft-reset frame for make flash
 ```
 
 ## License

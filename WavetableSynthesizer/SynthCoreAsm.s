@@ -112,124 +112,152 @@ envelopUpdateEnd$:
 ;
 ; 参数: dpl = MIDI 音符编号 (0-127)
 ;
-; 流程：
-;   1. 从 synth->lastSoundUnit 取得下一个可用声道号 (0-7 round-robin)
-;   2. 计算该声道在 soundUnit 数组中的起始地址放入 r0
-;   3. 关中断 (clr ea) — 防止 ISR 在设置中途读到半新半旧的状态
-;   4. 查 WaveTable_Increment 表获取该音符的频率增量 (16 位)
-;   5. 清零该声道所有状态值 (相位 = 0, 包络 = 255 全音量, 包络位置 = 0)
-;   6. 开中断
-;   7. lastSoundUnit = (lastSoundUnit + 1) % POLY_NUM
+; 声道分配策略 (空闲优先 + Round-Robin 回退):
+;   阶段 A: 遍历 8 声道，找 envelopeLevel==0 (完全静音) 的空闲声道
+;   阶段 B: 若无空闲声道，使用 lastSoundUnit (FIFO round-robin)
 ;
-; 注意：_NoteOnAsm 内部操作在关中断保护下完成，保证 ISR (SynthAsm)
-;       不会读到不一致的声道状态。
+;   注意: 不使用"最静偷取"是因为高音 phase increment 更大，
+;   wavetablePos 更快达到 WAVETABLE_ATTACK_LEN，包络衰减更早启动，
+;   导致 envelopeLevel 比较时系统性歧视高音。
+;   Round-robin (FIFO) 偷最早分配的声道，与音高无关，更公平。
+;
+;   时序约束: NoteOnAsm 运行在主循环，无严格实时要求。
 ;====================================================================
 _NoteOnAsm:
 
 ; ---- C 代码等效逻辑 ----
 ;   void NoteOn(Synthesizer* synth, uint8_t note) {
-;       uint8_t lastSoundUnit = synth->lastSoundUnit;
+;       uint8_t idx;
+;       // 阶段 A: 找空闲声道
+;       for (uint8_t i = 0; i < POLY_NUM; i++) {
+;           if (synth->SoundUnitUnionList[i].split.envelopeLevel == 0) {
+;               idx = i; goto voiceFound;
+;           }
+;       }
+;       // 阶段 B: 无空闲 → round-robin
+;       idx = synth->lastSoundUnit;
+;   voiceFound:
 ;       disable_interrupts();
-;       synth->SoundUnitUnionList[lastSoundUnit].combine.increment =
+;       synth->SoundUnitUnionList[idx].combine.increment =
 ;           PitchIncrementTable[note & 0x7F];
-;       synth->SoundUnitUnionList[lastSoundUnit].combine.wavetablePos_frac = 0;
-;       synth->SoundUnitUnionList[lastSoundUnit].combine.wavetablePos_int = 0;
-;       synth->SoundUnitUnionList[lastSoundUnit].combine.envelopePos = 0;
-;       synth->SoundUnitUnionList[lastSoundUnit].combine.envelopeLevel = 255;
+;       synth->SoundUnitUnionList[idx].combine.wavetablePos_frac = 0;
+;       synth->SoundUnitUnionList[idx].combine.wavetablePos_int = 0;
+;       synth->SoundUnitUnionList[idx].combine.envelopePos = 0;
+;       synth->SoundUnitUnionList[idx].combine.envelopeLevel = 255;
 ;       enable_interrupts();
-;       lastSoundUnit = (lastSoundUnit + 1) % POLY_NUM;
-;       synth->lastSoundUnit = lastSoundUnit;
+;       synth->lastSoundUnit = (idx + 1) % POLY_NUM;
 ;   }
 
 	pSynth = SynthAbsAddr
 
-	; ---- 1. 获取当前声道编号，计算该声道在数组中的基址 ----
-	mov a,(pSynth+pLastSoundUnit)   ; a = lastSoundUnit (0-7)
-	mov b,#unitSz                   ; b = 10 (每个声道的字节数)
-	mul ab                          ; b:a = lastSoundUnit * 10
-	add a,#pSynth                   ; a += Synthesizer 起始地址
-	mov r0,a                        ; r0 = 目标声道的基址 (DATA 地址)
+	; ================================================================
+	; 阶段 A: 扫描空闲声道 (envelopeLevel == 0)
+	; 寄存器: r2=声道索引, r3=声道基址
+	; ================================================================
+	mov r2,#0                        ; r2 = 声道索引 0..7
+	mov r3,#pSynth                   ; r3 = 声道 0 基址
+freeScanLoop:
+	mov a,r3
+	add a,#pEnvelopeLevel
+	mov r1,a
+	mov a,@r1                        ; a = envelopeLevel
+	jz useFreeVoice                  ; 找到空闲声道
 
-	; ---- 2. 关中断，进入临界区 ----
+	mov a,r3
+	add a,#unitSz
+	mov r3,a
+	inc r2
+	cjne r2,#POLY_NUM,freeScanLoop
+
+	; ================================================================
+	; 阶段 B: 无空闲声道，使用 round-robin (lastSoundUnit)
+	; ================================================================
+	mov a,(pSynth+pLastSoundUnit)    ; a = lastSoundUnit (0-7)
+	sjmp voiceSelected
+
+useFreeVoice:
+	mov a,r2                         ; a = 空闲声道索引
+
+voiceSelected:
+	mov r7,a                         ; r7 = 选中的声道索引 (保存用于后续更新 lastSoundUnit)
+
+	; ---- 计算声道基址: r0 = pSynth + 选中索引 * unitSz ----
+	mov b,#unitSz
+	mul ab                           ; b:a = 索引 * 10
+	add a,#pSynth
+	mov r0,a                         ; r0 = 目标声道基址 (DATA 地址)
+
+	; ---- 关中断，进入临界区 ----
 	clr ea
 
-	; ---- 3. 查 PitchIncrementTable[note & 0x7F] ----
-	; WaveTable_Increment 是一个 uint16_t 数组，每 2 字节一个值
-	; 需要用 (note & 0x7F) * 2 作为偏移
+	; ---- 查 PitchIncrementTable[note & 0x7F] ----
 	mov a,#0x7F
-	anl a,dpl                       ; a = note & 0x7F (去掉 bit 7)
-	rl a                            ; a = (note & 0x7F) * 2 (16-bit 偏移)
-	mov r6,a                        ; r6 = 偏移量备份
+	anl a,dpl                        ; a = note & 0x7F (去掉 bit 7)
+	rl a                             ; a = (note & 0x7F) * 2 (16-bit 偏移)
+	mov r6,a                         ; r6 = 偏移量备份
 	mov dptr,#_WaveTable_Increment
-	movc a,@a+dptr                  ; a = 低字节 (increment_frac)
-	mov r4,a                        ; r4 = increment_frac
+	movc a,@a+dptr                   ; a = 低字节 (increment_frac)
+	mov r4,a                         ; r4 = increment_frac
 	inc dptr
-	mov a,r6                        ; 重新取偏移量 (movc 改了 a)
-	movc a,@a+dptr                  ; a = 高字节 (increment_int)
-	mov r5,a                        ; r5 = increment_int
+	mov a,r6                         ; 重新取偏移量 (movc 改了 a)
+	movc a,@a+dptr                   ; a = 高字节 (increment_int)
+	mov r5,a                         ; r5 = increment_int
 
-	; ---- 4. 写入声道状态 ----
-	;    通过间接寻址 r1 = r0 + offset, 写入 @r1
+	; ---- 写入声道状态 ----
 
-	; -- 写入 increment_frac (偏移 0) --
+	; -- increment_frac (偏移 0) --
 	mov a,#pIncrement_frac
 	add a,r0
 	mov r1,a
 	mov a,r4
 	mov @r1,a
 
-	; -- 写入 increment_int (偏移 1) --
+	; -- increment_int (偏移 1) --
 	mov a,#pIncrement_int
 	add a,r0
 	mov r1,a
 	mov a,r5
 	mov @r1,a
 
-	; -- 写入 wavetablePos_frac = 0 (偏移 2) --
-	;    这是之前 BUG 的位置：原来写成了 pEnvelopePos
+	; -- wavetablePos_frac = 0 (偏移 2) --
 	mov a,#pWavetablePos_frac
 	add a,r0
 	mov r1,a
 	mov @r1,#0
 
-	; -- 写入 wavetablePos_int_l = 0 (偏移 3) --
+	; -- wavetablePos_int_l = 0 (偏移 3) --
 	mov a,#pWavetablePos_int_l
 	add a,r0
 	mov r1,a
 	mov @r1,#0
 
-	; -- 写入 wavetablePos_int_h = 0 (偏移 4) --
+	; -- wavetablePos_int_h = 0 (偏移 4) --
 	mov a,#pWavetablePos_int_h
 	add a,r0
 	mov r1,a
 	mov @r1,#0
 
-	; -- 写入 envelopeLevel = 255 (偏移 5) --
-	;    新音符从最大音量开始
+	; -- envelopeLevel = 255 (偏移 5) --
 	mov a,#pEnvelopeLevel
 	add a,r0
 	mov r1,a
 	mov @r1,#255
 
-	; -- 写入 envelopePos = 0 (偏移 6) --
-	;    包络从第 0 步开始（对应最大音量）
+	; -- envelopePos = 0 (偏移 6) --
 	mov a,#pEnvelopePos
 	add a,r0
 	mov r1,a
 	mov @r1,#0
 
-	; ---- 5. 开中断，退出临界区 ----
+	; ---- 开中断，退出临界区 ----
 	setb ea
 
-	; ---- 6. lastSoundUnit = (lastSoundUnit + 1) % POLY_NUM ----
-	mov r4,(pSynth+pLastSoundUnit)  ; 重新加载当前声道号
-	inc r4                          ; r4 = lastSoundUnit + 1
-	mov a,r4
-	clr c
-	subb a,#POLY_NUM               ; 比较 r4 和 8
-	jnz lastSoundUnitUpdateEndNotEq$ ; r4 != 8 → 未溢出
-	mov r4,#0                       ; r4 == 8 → 归零
-lastSoundUnitUpdateEndNotEq$:
-	mov (pSynth+pLastSoundUnit),r4  ; 写回 Synthesizer
+	; ---- lastSoundUnit = (选中索引 + 1) % POLY_NUM ----
+	mov a,r7
+	inc a
+	cjne a,#POLY_NUM,noWrap
+	clr a
+noWrap:
+	mov (pSynth+pLastSoundUnit),a
 
 	ret

@@ -377,7 +377,15 @@ State machine: `READY_TO_SWITCH` → `SWITCHING` → `SCORE_PREV/NEXT` → `READ
 
 ### Note assignment
 
-Round-robin across 8 voices. `NoteOnAsm` runs inside `clr ea`/`setb ea` critical section.
+**Free-voice-first + Round-robin fallback** across 8 voices. `NoteOnAsm` (`SynthCoreAsm.s:122`):
+
+1. Phase A: scan all 8 voices for `envelopeLevel == 0` (fully silent) — reuse immediately
+2. Phase B: if none free, use `lastSoundUnit` cursor (FIFO round-robin, steals oldest note)
+3. `lastSoundUnit = (selected_index + 1) % 8`
+
+The voice write (zeroing phase, setting envelope=255) is inside `clr ea`/`setb ea` critical section. The free-voice scan runs outside the critical section since `envelopeLevel` is only modified in main-loop context (`GenDecayEnvlopeAsm`), not in ISR.
+
+**Why not "steal the quietest"?** High notes have larger `phase increment`, so `wavetablePos` reaches `WAVETABLE_ATTACK_LEN` (21260) faster, causing their envelope decay to start earlier. Comparing `envelopeLevel` systematically discriminates against high notes. FIFO round-robin is pitch-independent and fair.
 
 ## Serial Protocol
 

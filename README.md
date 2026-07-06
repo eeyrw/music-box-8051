@@ -19,9 +19,6 @@ sudo apt install sdcc
 # Internal flash build (scores embedded in MCU flash)
 make
 
-# External SPI flash build (scores pre-programmed on SPI NOR flash)
-make STORAGE=spi
-
 # Clean
 make clean
 ```
@@ -41,9 +38,6 @@ pip3 install stcgal
 # Flash (default port /dev/ttyUSB0, protocol stc8d)
 make flash
 
-# SPI build
-make flash STORAGE=spi
-
 # Custom port/protocol
 make flash STCGAL_PORT=/dev/ttyUSB1 STCGAL_PROTO=stc8h
 ```
@@ -56,6 +50,7 @@ Full framed binary protocol at 115200 baud: `SYNC(0x5A) | CMD | LEN | [PAYLOAD] 
 # Python CLI tool
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 ping
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 info
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 sysinfo
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 status
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 next
 
@@ -150,14 +145,16 @@ On startup, a random song is selected using ADC noise as entropy.
 
 ## Storage Backends
 
-Storage is abstracted behind `Storage.h` — Player does not know the backend:
+Storage is abstracted behind `Storage.h` with runtime-selectable backends via function pointer dispatcher (`Storage.c`). Both backends are always compiled; the active one is chosen at boot by `storage_auto_detect()`:
 
 | Backend | Files | Description |
 |---------|-------|-------------|
 | Internal | `Storage_Internal.c` + `scoreList.c` | `__code` flash via `movc a,@a+dptr` |
 | SPI | `Storage_SPI.c` + `SpiFlash.c` | External SPI NOR via GPIO bit-bang |
 
-Select via `make` (internal) or `make STORAGE=spi` (SPI).
+**Auto-detection**: At boot, `storage_auto_detect()` reads the SPI flash JEDEC ID. If a valid chip responds, the SPI backend is selected; otherwise it falls back to internal flash. The backend can also be set manually via `storage_select_backend(type)`.
+
+Player does not know which backend is active — all `stream_*` calls go through the global ops vtable.
 
 `SpiFlash.c` provides generic NOR flash operations (read, write, erase, JEDEC ID) with a 1KB XRAM read cache and ms-based busy-wait timeouts. Used by both the ScoreStream layer and the serial protocol for flash programming.
 
@@ -184,6 +181,7 @@ The test feeds 9 notes, runs 10,000 iterations, and compares every voice field b
 ├── Protocol.c / Protocol.h          Serial protocol (frame, commands, flash ops)
 ├── RegisterDefine.h                 MCU selector (STC8 vs STC15F)
 ├── Storage.h                        ScoreStream abstraction (opaque buffer)
+├── Storage.c                        Runtime backend dispatcher (function pointer vtable)
 ├── Storage_Internal.c               Internal __code flash backend
 ├── Storage_SPI.c                    SPI flash ScoreStream wrapper
 ├── SpiFlash.c / SpiFlash.h          Generic SPI NOR flash driver (bit-bang + cache)

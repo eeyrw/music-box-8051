@@ -4,6 +4,7 @@
 #include "Player.h"
 #include "Bsp.h"
 #include "Protocol.h"
+#include "Storage.h"
 
 extern void TestProcess(void);
 Player mainPlayer;
@@ -26,6 +27,7 @@ void main()
 	Proto_Init();
 
 #ifndef RUN_TEST
+	storage_auto_detect();
 	StartPlayScheduler(&mainPlayer, MODE_LIST_ONCE);
 
 	SchedulerPlaySong(&mainPlayer, GetRandom() % 5);

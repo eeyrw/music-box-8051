@@ -30,8 +30,8 @@ XRAM_SIZE = --xram-loc 0x0000 --xram-size 3072
 # all the files will be generated with this name (main.elf, main.bin, main.hex, etc)
 PROJECT_NAME=music-box-8051
 
-# Storage backend: internal (default) or spi
-STORAGE ?= internal
+# Storage backend: runtime-selectable via function pointer dispatcher
+# Both backends are always compiled; backend chosen by storage_auto_detect() at boot
 
 # specify define
 DEFS       = NO_RUN_TEST
@@ -58,15 +58,12 @@ SRC 	+= Protocol.c
 SRC 	+= WavetableSynthesizer/WaveTable.c
 SRC 	+= WavetableSynthesizer/EnvelopTable.c
 
-# Storage backend selection
-ifeq ($(STORAGE),spi)
-  DEFS += STORAGE_BACKEND_SPI
-  SRC  += Storage_SPI.c
-  SRC  += SpiFlash.c
-else
-  SRC  += Storage_Internal.c
-  SRC  += WavetableSynthesizer/scoreList.c
-endif
+# Storage backends (both always compiled)
+SRC 	+= Storage.c
+SRC 	+= Storage_Internal.c
+SRC 	+= Storage_SPI.c
+SRC 	+= SpiFlash.c
+SRC 	+= WavetableSynthesizer/scoreList.c
 
 ASM_SRC =
 ASM_SRC   += WavetableSynthesizer/PeriodTimer.s

@@ -1,7 +1,5 @@
 #include "Storage.h"
 
-#ifndef STORAGE_BACKEND_SPI
-
 typedef struct
 {
 	__code uint8_t *data;
@@ -11,16 +9,16 @@ typedef struct
 
 __code extern unsigned char Score[];
 
-void storage_init(void)
+void storage_init_internal(void)
 {
 }
 
-uint32_t storage_get_base_addr(void)
+uint32_t storage_get_base_addr_internal(void)
 {
 	return (uint32_t)(uint16_t)Score;
 }
 
-void stream_init(ScoreStream *s, uint32_t base, uint32_t size)
+void stream_init_internal(ScoreStream *s, uint32_t base, uint32_t size)
 {
 	StreamImpl *si = (StreamImpl *)s;
 	si->data = (__code uint8_t *)(uint16_t)base;
@@ -28,7 +26,7 @@ void stream_init(ScoreStream *s, uint32_t base, uint32_t size)
 	si->size = size;
 }
 
-void stream_sub(ScoreStream *s, ScoreStream *parent, uint32_t offset, uint32_t size)
+void stream_sub_internal(ScoreStream *s, ScoreStream *parent, uint32_t offset, uint32_t size)
 {
 	StreamImpl *si = (StreamImpl *)s;
 	StreamImpl *pi = (StreamImpl *)parent;
@@ -37,7 +35,7 @@ void stream_sub(ScoreStream *s, ScoreStream *parent, uint32_t offset, uint32_t s
 	si->size = size;
 }
 
-uint8_t stream_read(ScoreStream *s, uint8_t *out)
+uint8_t stream_read_internal(ScoreStream *s, uint8_t *out)
 {
 	StreamImpl *si = (StreamImpl *)s;
 	if (si->pos >= si->size)
@@ -46,7 +44,7 @@ uint8_t stream_read(ScoreStream *s, uint8_t *out)
 	return 1;
 }
 
-uint8_t stream_peek(ScoreStream *s, uint8_t *out)
+uint8_t stream_peek_internal(ScoreStream *s, uint8_t *out)
 {
 	StreamImpl *si = (StreamImpl *)s;
 	if (si->pos >= si->size)
@@ -55,20 +53,20 @@ uint8_t stream_peek(ScoreStream *s, uint8_t *out)
 	return 1;
 }
 
-uint8_t stream_u8(ScoreStream *s, uint32_t offset)
+uint8_t stream_u8_internal(ScoreStream *s, uint32_t offset)
 {
 	StreamImpl *si = (StreamImpl *)s;
 	return si->data[offset];
 }
 
-uint16_t stream_u16(ScoreStream *s, uint32_t offset)
+uint16_t stream_u16_internal(ScoreStream *s, uint32_t offset)
 {
 	StreamImpl *si = (StreamImpl *)s;
 	return (uint16_t)si->data[offset]
 	     | ((uint16_t)si->data[offset + 1] << 8);
 }
 
-uint32_t stream_u32(ScoreStream *s, uint32_t offset)
+uint32_t stream_u32_internal(ScoreStream *s, uint32_t offset)
 {
 	StreamImpl *si = (StreamImpl *)s;
 	return (uint32_t)si->data[offset]
@@ -76,5 +74,3 @@ uint32_t stream_u32(ScoreStream *s, uint32_t offset)
 	     | ((uint32_t)si->data[offset + 2] << 16)
 	     | ((uint32_t)si->data[offset + 3] << 24);
 }
-
-#endif

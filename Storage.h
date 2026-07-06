@@ -5,10 +5,20 @@
 
 #define STREAM_IMPL_SIZE  12
 
+enum STORAGE_BACKEND
+{
+	STORAGE_BACKEND_INTERNAL = 0,
+	STORAGE_BACKEND_SPI      = 1,
+};
+
 typedef struct _ScoreStream
 {
 	uint8_t _[STREAM_IMPL_SIZE];
 } ScoreStream;
+
+void storage_select_backend(uint8_t type);
+uint8_t storage_get_backend(void);
+void storage_auto_detect(void);
 
 void storage_init(void);
 uint32_t storage_get_base_addr(void);

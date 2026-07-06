@@ -14,6 +14,7 @@
 #define CMD_AUDIO_INFO    0x05
 #define CMD_ADC_READ      0x06
 #define CMD_VOICE_DUMP    0x07
+#define CMD_SYS_INFO      0x08
 
 #define CMD_PLAY          0x10
 #define CMD_STOP          0x11

@@ -14,6 +14,7 @@ Commands:
   audio                   Get audio info (mixOut, active voices)
   adc <N>                 Read ADC channel N (0-15)
   voice                   Full 8-voice synthesizer state dump
+  sysinfo                 Comprehensive system status (one-shot)
   play                    Start playback
   stop                    Stop playback
   prev                    Previous song
@@ -45,6 +46,7 @@ CMD_MEM_INFO       = 0x04
 CMD_AUDIO_INFO     = 0x05
 CMD_ADC_READ       = 0x06
 CMD_VOICE_DUMP     = 0x07
+CMD_SYS_INFO       = 0x08
 CMD_PLAY           = 0x10
 CMD_STOP           = 0x11
 CMD_PREV           = 0x12
@@ -328,6 +330,34 @@ class MusicBoxClient:
                 f"val={val:+d}  sample={sample:#04x}"
             )
 
+    def sysinfo(self):
+        data = self._do_cmd(CMD_SYS_INFO)
+        (uptime_ms, backend, audio_on, stack_free,
+         active, mix_l, mix_h, cur_song, max_songs,
+         playing, mode) = struct.unpack("<IBBBBBBBBBB", data)
+
+        sec = uptime_ms // 1000
+        h = sec // 3600
+        m = (sec % 3600) // 60
+        s = sec % 60
+
+        mix_out = mix_l | (mix_h << 8)
+        if mix_out & 0x8000:
+            mix_out -= 0x10000
+
+        stype = "SPI Flash" if backend else "Internal Flash"
+        mode_names = {0: "ORDER_PLAY", 1: "LIST_ONCE", 2: "SINGLE_SONG"}
+
+        print(f"Uptime:       {h}h {m}m {s}s  ({uptime_ms} ms)")
+        print(f"Storage:      {stype}")
+        print(f"Audio out:    {'on' if audio_on else 'off'}")
+        print(f"Stack free:   {stack_free} B")
+        print(f"Voices:       {active}/8 active")
+        print(f"Mix out:      {mix_out:+d}")
+        print(f"Song:         {cur_song}/{max_songs}")
+        print(f"Playing:      {'yes' if playing else 'no'}")
+        print(f"Mode:         {mode} ({mode_names.get(mode, '?')})")
+
     def close(self):
         self.ser.close()
 
@@ -364,6 +394,8 @@ def main():
             client.adc(int(args.args[0]))
         elif cmd == "voice":
             client.voice()
+        elif cmd == "sysinfo":
+            client.sysinfo()
         elif cmd == "play":
             client.play()
         elif cmd == "stop":

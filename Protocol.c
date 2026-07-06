@@ -2,9 +2,8 @@
 #include "RegisterDefine.h"
 #include "Player.h"
 #include "Bsp.h"
-#ifdef STORAGE_BACKEND_SPI
 #include "SpiFlash.h"
-#endif
+#include "Storage.h"
 
 #define RX_BUF_SIZE  256
 #define RX_MASK      (RX_BUF_SIZE - 1)
@@ -181,8 +180,6 @@ static uint16_t read_u16_le(const uint8_t *p)
 	return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
-#ifdef STORAGE_BACKEND_SPI
-
 static uint8_t flash_read_id_buf[3];
 
 static void cmd_flash_info(void)
@@ -273,14 +270,10 @@ static void cmd_flash_write(void)
 		send_response_ok(CMD_FLASH_WRITE);
 }
 
-#else
-
 static void flash_not_supported(uint8_t cmd)
 {
 	send_response_err(cmd, STATUS_NOT_SUPPORTED);
 }
-
-#endif
 
 static void dispatch_command(void)
 {
@@ -301,11 +294,7 @@ static void dispatch_command(void)
 		Player *p = &mainPlayer;
 		buf[0] = FW_VERSION_MAJOR;
 		buf[1] = FW_VERSION_MINOR;
-#ifdef STORAGE_BACKEND_SPI
-		buf[2] = 1;
-#else
-		buf[2] = 0;
-#endif
+		buf[2] = storage_get_backend();
 		buf[3] = (uint8_t)(p->scheduler.maxScoreNum & 0xFF);
 		send_data_response(CMD_GET_INFO, STATUS_OK, buf, 4);
 		break;
@@ -395,6 +384,41 @@ static void dispatch_command(void)
 		break;
 	}
 
+	case CMD_SYS_INFO:
+	{
+		Player *p = &mainPlayer;
+		uint32_t ms = GetSysMs();
+		uint8_t i, active = 0;
+		uint8_t buf[14];
+
+		for (i = 0; i < POLY_NUM; i++)
+		{
+			if (synthForAsm.SoundUnitUnionList[i].split.envelopeLevel > 0)
+				active++;
+		}
+
+		buf[0]  = (uint8_t)(ms);
+		buf[1]  = (uint8_t)(ms >> 8);
+		buf[2]  = (uint8_t)(ms >> 16);
+		buf[3]  = (uint8_t)(ms >> 24);
+
+		buf[4]  = storage_get_backend();
+		buf[5]  = (TR0 && ET0) ? 1 : 0;
+		buf[6]  = 0xFF - SP;
+		buf[7]  = active;
+
+		buf[8]  = (uint8_t)(synthForAsm.mixOut);
+		buf[9]  = (uint8_t)(synthForAsm.mixOut >> 8);
+
+		buf[10] = (uint8_t)p->scheduler.currentScoreIndex;
+		buf[11] = (uint8_t)p->scheduler.maxScoreNum;
+		buf[12] = (p->decoder.status == STATUS_DECODING) ? 1 : 0;
+		buf[13] = p->scheduler.schedulerMode;
+
+		send_data_response(CMD_SYS_INFO, STATUS_OK, buf, 14);
+		break;
+	}
+
 	case CMD_PLAY:
 		PlayerPlay(&mainPlayer);
 		send_response_ok(CMD_PLAY);
@@ -436,35 +460,30 @@ static void dispatch_command(void)
 		break;
 	}
 
-#ifdef STORAGE_BACKEND_SPI
-	case CMD_FLASH_INFO:
-		cmd_flash_info();
-		break;
-	case CMD_FLASH_READ_ID:
-		cmd_flash_read_id();
-		break;
-	case CMD_FLASH_READ:
-		cmd_flash_read();
-		break;
-	case CMD_FLASH_ERASE:
-		cmd_flash_erase();
-		break;
-	case CMD_FLASH_ERASE_ALL:
-		cmd_flash_erase_all();
-		break;
-	case CMD_FLASH_WRITE:
-		cmd_flash_write();
-		break;
-#else
 	case CMD_FLASH_INFO:
 	case CMD_FLASH_READ_ID:
 	case CMD_FLASH_READ:
 	case CMD_FLASH_ERASE:
 	case CMD_FLASH_ERASE_ALL:
 	case CMD_FLASH_WRITE:
-		flash_not_supported(pkt_cmd);
+		if (storage_get_backend() != STORAGE_BACKEND_SPI)
+		{
+			flash_not_supported(pkt_cmd);
+			break;
+		}
+		if (pkt_cmd == CMD_FLASH_INFO)
+			cmd_flash_info();
+		else if (pkt_cmd == CMD_FLASH_READ_ID)
+			cmd_flash_read_id();
+		else if (pkt_cmd == CMD_FLASH_READ)
+			cmd_flash_read();
+		else if (pkt_cmd == CMD_FLASH_ERASE)
+			cmd_flash_erase();
+		else if (pkt_cmd == CMD_FLASH_ERASE_ALL)
+			cmd_flash_erase_all();
+		else if (pkt_cmd == CMD_FLASH_WRITE)
+			cmd_flash_write();
 		break;
-#endif
 
 	default:
 		send_response_err(pkt_cmd, STATUS_UNKNOWN_CMD);

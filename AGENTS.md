@@ -3,12 +3,9 @@
 ## Build
 
 ```bash
-make              # production build (NO_RUN_TEST + STC8 defined, internal flash)
+make              # production build (NO_RUN_TEST + STC8 defined)
 make clean
 make flash        # build + flash via stcgal
-
-# Storage backend selection:
-make STORAGE=spi  # external SPI FLASH backend (excludes scoreList.c)
 ```
 
 SDCC toolchain for 8051 (C: `sdcc`, asm: `sdas8051`, hex packer: `packihx`). Outputs `.ihx` → `.hex` (via packihx) and `.bin` (via `sdobjcopy -O binary`).
@@ -202,15 +199,18 @@ stream_read / stream_u8 / stream_u16 / stream_u32     // 数据读取
 
 ## Storage Backend Switching
 
-```bash
-make                  # Internal __code FLASH (includes scoreList.c ~29KB)
-make STORAGE=spi      # External SPI FLASH (excludes scoreList.c, adds SpiFlash.c)
-```
+Both backends are always compiled. A global function-pointer vtable (`Storage.c`) dispatches at runtime. The active backend is chosen at boot by `storage_auto_detect()`, which reads the SPI flash JEDEC ID:
+
+- **Valid ID** → SPI backend (`Storage_SPI.c` + `SpiFlash.c`)
+- **No response** (0xFF or 0x00) → Internal backend (`Storage_Internal.c` + `scoreList.c`)
+
+Manual override: `storage_select_backend(STORAGE_BACKEND_INTERNAL)` or `STORAGE_BACKEND_SPI`. Use `storage_get_backend()` for runtime checks (e.g., Protocol.c flash commands).
 
 ### File Layout
 
 ```
-./Storage.h              ← 抽象接口: ScoreStream (12-byte 不透明缓冲) + storage_init/get_base_addr
+./Storage.h              ← 抽象接口: ScoreStream (12-byte 不透明缓冲) + backend enum/select API
+./Storage.c              ← 运行时调度器: 全局 ops vtable + 9 个 wrapper 函数 + auto_detect
 ./Storage_Internal.c     ← 内置 __code FLASH 后端
 ./Storage_SPI.c          ← SPI FLASH 后端，委托 SpiFlash 驱动
 ./SpiFlash.h             ← 通用 SPI NOR FLASH 驱动接口
@@ -401,6 +401,7 @@ Full framed binary protocol documented in `Protocol.h`. Summary:
 | AUDIO_INFO | 0x05 | mixOut, active voice count, lastSoundUnit |
 | ADC_READ | 0x06 | Read ADC channel (uint16_t) |
 | VOICE_DUMP | 0x07 | Full 8-voice state snapshot (80 bytes) |
+| SYS_INFO | 0x08 | Comprehensive system status (uptime, backend, audio, voices, song, mode — 14 bytes) |
 | PLAY/STOP/PREV/NEXT | 0x10-13 | Playback control |
 | SET_SONG | 0x14 | Switch to song index |
 | GET_STATUS | 0x15 | Current song, playing state |

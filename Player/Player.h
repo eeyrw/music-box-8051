@@ -129,4 +129,6 @@ extern void StopDecode(Player *player);
 extern void PlayerPlay(Player *player);
 extern void PlayerStop(Player *player);
 
+extern const __code uint8_t velocityCurve[128];
+
 #endif

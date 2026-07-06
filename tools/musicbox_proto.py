@@ -15,7 +15,7 @@ Commands:
   adc <N>                 Read ADC channel N (0-15)
   voice                   Full 8-voice synthesizer state dump
   sysinfo                 Comprehensive system status (one-shot)
-  note-on <NOTE>          Trigger NoteOn (MIDI note 0-127)
+  note-on <NOTE> [VEL]    Trigger NoteOn (0-127), optional velocity 0-127
   note-off <NOTE>         Trigger NoteOff (MIDI note 0-127)
   play                    Start playback
   stop                    Stop playback
@@ -358,9 +358,13 @@ class MusicBoxClient:
         print(f"Playing:      {'yes' if playing else 'no'}")
         print(f"Mode:         {mode} ({mode_names.get(mode, '?')})")
 
-    def note_on(self, note):
-        self._do_cmd(CMD_NOTE_ON, struct.pack("B", note))
-        print(f"NoteOn  note={note}")
+    def note_on(self, note, velocity=None):
+        payload = struct.pack("B", note)
+        if velocity is not None:
+            payload += struct.pack("B", velocity)
+        self._do_cmd(CMD_NOTE_ON, payload)
+        vel_str = f" vel={velocity}" if velocity is not None else ""
+        print(f"NoteOn  note={note}{vel_str}")
 
     def note_off(self, note):
         self._do_cmd(CMD_NOTE_OFF, struct.pack("B", note))
@@ -407,7 +411,8 @@ def main():
         elif cmd == "note-on":
             if not args.args:
                 sys.exit("note-on requires a MIDI note argument (0-127)")
-            client.note_on(int(args.args[0]))
+            vel = int(args.args[1]) if len(args.args) > 1 else None
+            client.note_on(int(args.args[0]), vel)
         elif cmd == "note-off":
             if not args.args:
                 sys.exit("note-off requires a MIDI note argument (0-127)")

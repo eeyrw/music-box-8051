@@ -422,12 +422,14 @@ static void dispatch_command(void)
 
 	case CMD_NOTE_ON:
 	{
+		uint8_t vel;
 		if (pkt_len < 1)
 		{
 			send_response_err(CMD_NOTE_ON, STATUS_BAD_LEN);
 			break;
 		}
-		NoteOnAsm(pkt_data[0], 255);
+		vel = (pkt_len >= 2) ? pkt_data[1] : 127;
+		NoteOnAsm(pkt_data[0], velocityCurve[vel]);
 		send_response_ok(CMD_NOTE_ON);
 		break;
 	}

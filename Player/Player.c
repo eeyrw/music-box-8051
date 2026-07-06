@@ -30,7 +30,7 @@
 
 static uint32_t lastDecayMs;
 
-static const __code uint8_t velocityCurve[128] = {
+const __code uint8_t velocityCurve[128] = {
       0,   0,   0,   0,   0,   0,   0,   0,   1,   1,   1,   1,
       2,   2,   3,   3,   4,   4,   5,   5,   6,   6,   7,   8,
       9,   9,  10,  11,  12,  13,  14,  15,  16,  17,  18,  19,

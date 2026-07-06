@@ -422,16 +422,12 @@ static void dispatch_command(void)
 
 	case CMD_NOTE_ON:
 	{
-		uint8_t idx;
 		if (pkt_len < 1)
 		{
 			send_response_err(CMD_NOTE_ON, STATUS_BAD_LEN);
 			break;
 		}
-		NoteOnAsm(pkt_data[0]);
-		idx = (synthForAsm.lastSoundUnit + POLY_NUM - 1) % POLY_NUM;
-		voiceState[idx].midiNote = pkt_data[0];
-		voiceState[idx].velocity = 255;
+		NoteOnAsm(pkt_data[0], 255);
 		send_response_ok(CMD_NOTE_ON);
 		break;
 	}

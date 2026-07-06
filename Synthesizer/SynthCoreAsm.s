@@ -223,14 +223,23 @@ ReleaseAllLoop:
 ;====================================================================
 ; _NoteOnAsm — 在新声道上触发一个音符
 ;
-; 参数: dpl = MIDI 音符编号 (0-127)
+; 参数 (SDCC non-reentrant): dpl = MIDI 音符, _NoteOnAsm_PARM_2 = velocity (0-255)
 ;
 ; 声道分配策略 (空闲优先 + Round-Robin 回退).
-; Note: voiceState[].midiNote 和 velocity 由调用方 (Player.c) 设置.
+; 同时写入 voiceState[].midiNote 和 velocity (XRAM).
 ;====================================================================
 _NoteOnAsm:
 
 	pSynth = SynthAbsAddr
+
+	; ---- 从栈上读取 velocity (8051 栈向上增长, velocity 在 SP-2) ----
+	mov a, SP
+	add a, #(256 - 2)                ; SP - 2 = velocity 地址 (8051 add 实现减法)
+	mov r1, a
+	mov a, @r1                       ; a = velocity (第二参数)
+	mov r6, a                        ; r6 = velocity
+
+	mov r5, dpl                      ; r5 = 原始 MIDI 音符 (保存, dptr 操作会覆盖 dpl)
 
 	; ================================================================
 	; 阶段 A: 扫描空闲声道 (envelopeLevel == 0)
@@ -261,42 +270,42 @@ useFreeVoice:
 	mov a,r2
 
 voiceSelected:
-	mov r7,a
+	mov r7,a                         ; r7 = 选中的声道索引
 
 	; ---- 计算声道基址: r0 = pSynth + 选中索引 * unitSz ----
 	mov b,#unitSz
 	mul ab
 	add a,#pSynth
-	mov r0,a
+	mov r0,a                         ; r0 = 目标声道基址 (DATA)
 
 	; ---- 关中断，进入临界区 ----
 	clr ea
 
 	; ---- 查 PitchIncrementTable[note & 0x7F] ----
 	mov a,#0x7F
-	anl a,dpl
+	anl a,r5                         ; r5 = 保存的原始音符
 	rl a
-	mov r6,a
+	mov r4,a
 	mov dptr,#_WaveTable_Increment
 	movc a,@a+dptr
-	mov r4,a
+	mov r3,a                         ; increment_frac
 	inc dptr
-	mov a,r6
+	mov a,r4
 	movc a,@a+dptr
-	mov r5,a
+	mov r2,a                         ; increment_int
 
 	; ---- 写入声道状态 ----
 
 	mov a,#pIncrement_frac
 	add a,r0
 	mov r1,a
-	mov a,r4
+	mov a,r3
 	mov @r1,a
 
 	mov a,#pIncrement_int
 	add a,r0
 	mov r1,a
-	mov a,r5
+	mov a,r2
 	mov @r1,a
 
 	mov a,#pWavetablePos_frac
@@ -317,12 +326,29 @@ voiceSelected:
 	mov a,#pEnvelopeLevel
 	add a,r0
 	mov r1,a
-	mov @r1,#255
+	mov a,r6                         ; velocity
+	mov @r1,a
 
 	mov a,#pEnvelopePos
 	add a,r0
 	mov r1,a
 	mov @r1,#255
+
+	; ---- 写 XRAM voiceState[r7] = {midiNote, velocity} ----
+	mov dptr,#_voiceState
+	mov a,r7
+	rl a                             ; a = r7 * 2
+	add a,dpl
+	mov dpl,a
+	clr a
+	addc a,dph
+	mov dph,a
+	mov a,r5                         ; 原始 MIDI 音符
+	movx @dptr,a                     ; voiceState[r7].midiNote = note
+
+	inc dptr                         ; dptr → voiceState[r7].velocity
+	mov a,r6                         ; velocity
+	movx @dptr,a                     ; voiceState[r7].velocity = velocity
 
 	; ---- 开中断，退出临界区 ----
 	setb ea

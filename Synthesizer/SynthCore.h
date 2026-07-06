@@ -59,7 +59,7 @@ extern void SynthC(void);
 extern void GenDecayEnvlopeC(void);
 #endif
 
-extern void NoteOnAsm(uint8_t note);
+extern void NoteOnAsm(uint8_t note, uint8_t velocity);
 extern void NoteOffAsm(uint8_t note);
 extern void GenDecayEnvlopeAsm(void);
 extern void SynthReleaseAllAsm(void);

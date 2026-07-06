@@ -104,13 +104,7 @@ static uint8_t sscr_dispatch_event(SSCR_Player *d, uint8_t byte)
                 return 0;
         }
         note = (uint8_t)((int)note - d->totalTranspose);
-        NoteOnAsm(note);
-        {
-            uint8_t idx = (synthForAsm.lastSoundUnit + POLY_NUM - 1) % POLY_NUM;
-            voiceState[idx].midiNote = note;
-            voiceState[idx].velocity = velocityCurve[vel];
-            synthForAsm.SoundUnitUnionList[idx].split.envelopeLevel = velocityCurve[vel];
-        }
+        NoteOnAsm(note, velocityCurve[vel]);
     }
     else
     {

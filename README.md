@@ -59,7 +59,7 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 flash-info
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 flash-read 0x0000 256 | xxd
 ```
 
-See `Protocol.h` for complete command table and `tools/musicbox_proto.py --help`.
+See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for the command table and `tools/musicbox_proto.py --help`.
 
 ## Architecture
 

@@ -194,7 +194,7 @@ stream_read / stream_u8 / stream_u16 / stream_u32     // 数据读取
 
 - UART1 (P3.0/P3.1) → CH340E → USB-C: programming + command interface at **115200 baud**
 - UART2 (P1.0/P1.1) available at TP_RXD2/TP_TXD2 test points
-- Serial protocol: framed binary `SYNC(0x5A) | CMD | LEN | PAYLOAD | CHECKSUM`, see `Protocol.h`
+- Serial protocol: framed binary `SYNC(0x5A) | CMD | LEN | PAYLOAD | CHECKSUM`, see `Protocol.h`, full spec at `docs/Protocol.md`
 - Protocol tool: `tools/musicbox_proto.py` (full CLI), `tools/boot.py` (reset-only for make flash)
 
 ## Storage Backend Switching

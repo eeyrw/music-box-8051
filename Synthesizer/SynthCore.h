@@ -15,7 +15,6 @@ typedef struct _SoundUnit
 	uint8_t envelopePos;
 	int16_t val;
 	int8_t sampleVal;
-	uint8_t midiNote;
 } SoundUnit;
 
 typedef struct _SoundUnitSplit
@@ -28,7 +27,6 @@ typedef struct _SoundUnitSplit
 	uint8_t envelopePos;
 	int16_t val;
 	int8_t sampleVal;
-	uint8_t midiNote;
 } SoundUnitSplit;
 
 typedef union _SoundUnitUnion
@@ -43,6 +41,14 @@ typedef struct _Synthesizer
 	int16_t mixOut;
 	uint8_t lastSoundUnit;
 } Synthesizer;
+
+typedef struct _VoiceState
+{
+	uint8_t midiNote;
+	uint8_t velocity;
+} VoiceState;
+
+extern __xdata VoiceState voiceState[POLY_NUM];
 
 extern void SynthInit(Synthesizer *synth);
 

@@ -107,6 +107,8 @@ static uint8_t sscr_dispatch_event(SSCR_Player *d, uint8_t byte)
         NoteOnAsm(note);
         {
             uint8_t idx = (synthForAsm.lastSoundUnit + POLY_NUM - 1) % POLY_NUM;
+            voiceState[idx].midiNote = note;
+            voiceState[idx].velocity = velocityCurve[vel];
             synthForAsm.SoundUnitUnionList[idx].split.envelopeLevel = velocityCurve[vel];
         }
     }
@@ -263,7 +265,6 @@ void PlaySchedulerProcess(Player *player)
         break;
 
     case SCHEDULER_STOP:
-        IntoPowerDown();
         break;
     }
 }

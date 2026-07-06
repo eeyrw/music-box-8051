@@ -31,7 +31,7 @@ void UART1_int(void) __interrupt(UART1_VECTOR)
     if (TI)
     {
         TI = 0;
-        Proto_ISR_TxDone();
+        Proto_ISR_TxNextByte();
     }
 }
 

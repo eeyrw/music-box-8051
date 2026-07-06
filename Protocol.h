@@ -52,6 +52,6 @@
 void Proto_Init(void);
 void Proto_Process(void);
 void Proto_ISR_Rx(uint8_t byte);
-void Proto_ISR_TxDone(void);
+void Proto_ISR_TxNextByte(void);
 
 #endif

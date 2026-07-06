@@ -13,8 +13,8 @@
 #define TX_BUF_SIZE  264
 
 static __xdata uint8_t  rx_ring[RX_BUF_SIZE];
-static uint8_t           rx_wr;
-static uint8_t           rx_rd;
+static volatile uint8_t  rx_wr;
+static volatile uint8_t  rx_rd;
 
 static __xdata uint8_t  pkt_data[PKT_BUF_SIZE];
 static uint8_t           pkt_len;
@@ -24,10 +24,10 @@ static uint8_t           pkt_csum;
 static uint8_t           pkt_cmd;
 
 static __xdata uint8_t  tx_buf[TX_BUF_SIZE];
-static uint8_t           tx_len;
-static uint8_t           tx_pos;
-static uint8_t           tx_state;
-volatile uint8_t         tx_done;
+static volatile uint8_t  tx_len;
+static volatile uint8_t  tx_pos;
+static volatile uint8_t  tx_state;
+
 
 extern Player mainPlayer;
 
@@ -44,7 +44,6 @@ static void start_tx(void)
 {
 	tx_pos  = 1;
 	tx_state = TX_SENDING;
-	tx_done  = 0;
 	SBUF = tx_buf[0];
 }
 
@@ -309,17 +308,7 @@ static void dispatch_command(void)
 
 	case CMD_RESET:
 		send_response_ok(CMD_RESET);
-		while (tx_state != TX_IDLE)
-		{
-			if (tx_done)
-			{
-				tx_done = 0;
-				if (tx_pos < tx_len)
-					SBUF = tx_buf[tx_pos++];
-				else
-					tx_state = TX_IDLE;
-			}
-		}
+		while (tx_state != TX_IDLE);
 		IAP_CONTR = 0x60;
 		while (1);
 		break;
@@ -483,9 +472,15 @@ void Proto_ISR_Rx(uint8_t byte)
 	proto_rx_put(byte);
 }
 
-void Proto_ISR_TxDone(void)
+void Proto_ISR_TxNextByte(void)
 {
-	tx_done = 1;
+	if (tx_state == TX_SENDING)
+	{
+		if (tx_pos < tx_len)
+			SBUF = tx_buf[tx_pos++];
+		else
+			tx_state = TX_IDLE;
+	}
 }
 
 void Proto_Init(void)
@@ -495,21 +490,11 @@ void Proto_Init(void)
 	tx_len = 0;
 	tx_pos = 0;
 	tx_state = TX_IDLE;
-	tx_done  = 0;
 	reset_parser();
 }
 
 void Proto_Process(void)
 {
-	if (tx_state == TX_SENDING && tx_done)
-	{
-		tx_done = 0;
-		if (tx_pos < tx_len)
-			SBUF = tx_buf[tx_pos++];
-		else
-			tx_state = TX_IDLE;
-	}
-
 	while (proto_rx_available())
 	{
 		uint8_t byte = proto_rx_get();

@@ -9,6 +9,11 @@ Commands:
   ping                    Test connection
   info                    Get system info (version, storage type, song count)
   reset                   Soft reset into ISP bootloader
+  uptime                  Get system uptime
+  mem                     Get memory info (SP, free stack)
+  audio                   Get audio info (mixOut, active voices)
+  adc <N>                 Read ADC channel N (0-15)
+  voice                   Full 8-voice synthesizer state dump
   play                    Start playback
   stop                    Stop playback
   prev                    Previous song
@@ -32,21 +37,26 @@ import serial
 SYNC = 0x5A
 RSP_FLAG = 0x80
 
-CMD_PING          = 0x00
-CMD_GET_INFO      = 0x01
-CMD_RESET         = 0x02
-CMD_PLAY          = 0x10
-CMD_STOP          = 0x11
-CMD_PREV          = 0x12
-CMD_NEXT          = 0x13
-CMD_SET_SONG      = 0x14
-CMD_GET_STATUS    = 0x15
-CMD_FLASH_INFO    = 0x20
-CMD_FLASH_ERASE   = 0x21
-CMD_FLASH_ERASE_ALL=0x22
-CMD_FLASH_READ    = 0x23
-CMD_FLASH_WRITE   = 0x24
-CMD_FLASH_READ_ID = 0x25
+CMD_PING           = 0x00
+CMD_GET_INFO       = 0x01
+CMD_RESET          = 0x02
+CMD_UPTIME         = 0x03
+CMD_MEM_INFO       = 0x04
+CMD_AUDIO_INFO     = 0x05
+CMD_ADC_READ       = 0x06
+CMD_VOICE_DUMP     = 0x07
+CMD_PLAY           = 0x10
+CMD_STOP           = 0x11
+CMD_PREV           = 0x12
+CMD_NEXT           = 0x13
+CMD_SET_SONG       = 0x14
+CMD_GET_STATUS     = 0x15
+CMD_FLASH_INFO     = 0x20
+CMD_FLASH_ERASE    = 0x21
+CMD_FLASH_ERASE_ALL= 0x22
+CMD_FLASH_READ     = 0x23
+CMD_FLASH_WRITE    = 0x24
+CMD_FLASH_READ_ID  = 0x25
 
 STATUS_OK            = 0x00
 STATUS_UNKNOWN_CMD   = 0x01
@@ -149,7 +159,7 @@ class MusicBoxClient:
                 f"Error: cmd {cmd:#04x} returned status {status:#04x} ({STATUS_NAMES.get(status, 'UNKNOWN')})"
             )
         if eat_extra:
-            self.ser.read(1024)
+            self.ser.read(self.ser.in_waiting)
         return data
 
     def ping(self):
@@ -242,6 +252,65 @@ class MusicBoxClient:
         print()
         print(f"Wrote {total} bytes to {addr:#010x}")
 
+    def uptime(self):
+        data = self._do_cmd(CMD_UPTIME)
+        ms = struct.unpack("<I", data)[0]
+        sec = ms // 1000
+        h = sec // 3600
+        m = (sec % 3600) // 60
+        s = sec % 60
+        print(f"Uptime:  {h}h {m}m {s}s  ({ms} ms)")
+
+    def mem(self):
+        data = self._do_cmd(CMD_MEM_INFO)
+        sp, free = struct.unpack("BB", data[:2])
+        print(f"SP:         {sp:#04x} ({sp})")
+        print(f"Free stack: {free} bytes")
+
+    def audio(self):
+        data = self._do_cmd(CMD_AUDIO_INFO)
+        mix_l, mix_h, last_voice, active = struct.unpack("BBBB", data)
+        mix_out = (mix_h << 8) | mix_l
+        if mix_out & 0x8000:
+            mix_out -= 0x10000
+        print(f"Mix out:     {mix_out:+d}")
+        print(f"Last voice:  {last_voice}")
+        print(f"Active:      {active}/8")
+
+    def adc(self, channel):
+        data = self._do_cmd(CMD_ADC_READ, struct.pack("B", channel))
+        val = struct.unpack(">H", data)[0]
+        mv = val * 5000 // 4096
+        print(f"ADC{channel}:   {val}  ({mv} mV)")
+
+    def voice(self):
+        data = self._do_cmd(CMD_VOICE_DUMP)
+        names = [
+            "inc_frac", "inc_int", "pos_frac",
+            "pos_int", "env_level", "env_pos",
+            "val", "sample",
+        ]
+        for v in range(8):
+            off = v * 10
+            fields = data[off:off + 10]
+            inc_frac  = fields[0]
+            inc_int   = fields[1]
+            pos_frac  = fields[2]
+            pos_int   = fields[3] | (fields[4] << 8)
+            env_level = fields[5]
+            env_pos   = fields[6]
+            val       = fields[7] | (fields[8] << 8)
+            if val & 0x8000:
+                val -= 0x10000
+            sample    = fields[9]
+            active = "ACTIVE" if env_level > 0 else "idle  "
+            print(
+                f"  V{v} [{active}] inc={inc_frac:#04x},{inc_int:#04x}  "
+                f"pos={pos_frac:#04x},{pos_int:#06x}  "
+                f"env={env_level:#04x}(lvl) {env_pos:#04x}(step)  "
+                f"val={val:+d}  sample={sample:#04x}"
+            )
+
     def close(self):
         self.ser.close()
 
@@ -266,6 +335,18 @@ def main():
             client.info()
         elif cmd == "reset":
             client.reset()
+        elif cmd == "uptime":
+            client.uptime()
+        elif cmd == "mem":
+            client.mem()
+        elif cmd == "audio":
+            client.audio()
+        elif cmd == "adc":
+            if not args.args:
+                sys.exit("adc requires a channel argument (0-15)")
+            client.adc(int(args.args[0]))
+        elif cmd == "voice":
+            client.voice()
         elif cmd == "play":
             client.play()
         elif cmd == "stop":

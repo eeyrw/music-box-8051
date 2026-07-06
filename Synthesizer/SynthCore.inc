@@ -15,8 +15,8 @@
 ;   0x10-0x1A: C 编译器自动分配的 DSEG 变量 (sysMsPre + sysMs, 5 字节)
 ;   0x1B-0x1F: 未使用 (5 字节)
 ;   0x20:      位寄存器
-;   0x21-0x73: Synthesizer 结构体 (83 字节 = 8×10 + 3)
-;   0x74-0xFF: C 栈 (140 字节)
+;   0x21-0x75: Synthesizer 结构体 (85 字节 = 8×10 + 5)
+;   0x76-0xFF: C 栈 (138 字节)
 ;
 ;   Player 结构体 (~34 字节) 由 SDCC 分配到 XRAM, 不占用 DATA
 ;   VoiceState (midiNote+velocity, 8×2=16 字节) 由 SDCC 分配到 XRAM
@@ -28,11 +28,12 @@
 	; ---- 调试/功能开关 ----
 	DEBUG_SYNTH=0
 	USE_LINEAR_INTEROP=1
+	USE_DITHERING=1
 
 	; ---- 包络参数 ----
 	ENVELOP_LEN=256
 	POLY_NUM=8
-	RELEASE_STEP=6
+	RELEASE_STEP=3
 
 ;====================================================================
 ; SoundUnit 结构体字段偏移 (每个声道 10 字节)
@@ -75,21 +76,24 @@
 	pSampleVal=9                       ; 波形采样值 (int8_t, 调试用)
 
 ;====================================================================
-; Synthesizer 结构体字段偏移 (83 字节)
+; Synthesizer 结构体字段偏移 (85 字节)
 ;
 ;   typedef struct _Synthesizer {
 ;       SoundUnitUnion SoundUnitUnionList[POLY_NUM];  // 偏移 0-79 (8×10 字节)
 ;       int16_t  mixOut;                              // 偏移 80-81: 混合输出
 ;       uint8_t  lastSoundUnit;                       // 偏移 82: 下一个声道编号
+;       uint16_t lfsr;                                // 偏移 83-84: 抖动 LFSR 状态
 ;   } Synthesizer;
 ;====================================================================
 
 	pMixOut_l=unitSz*POLY_NUM          ; 混合输出低字节 (80 = 8×10)
 	pMixOut_h=unitSz*POLY_NUM+1       ; 混合输出高字节 (81)
 	pLastSoundUnit=unitSz*POLY_NUM+2  ; 下一声道编号 (82)
+	pLFSR_l=unitSz*POLY_NUM+3         ; 抖动 LFSR 低字节 (83)
+	pLFSR_h=unitSz*POLY_NUM+4         ; 抖动 LFSR 高字节 (84)
 
 ; ---- Synthesizer 在 DATA 内存的绝对地址 ----
 ;     Player 已移至 XRAM (SDCC 自动分配), 所以此处不再依赖 PlayrAbsAddr
 ;     0x21 与原版 master 一致, 紧接在 DSEG 变量之后
 	SynthAbsAddr = 0x21
-	SynthTotalSize = unitSz*POLY_NUM+3 ; 83
+	SynthTotalSize = unitSz*POLY_NUM+5 ; 85

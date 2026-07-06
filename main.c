@@ -30,6 +30,7 @@ void main()
 	storage_auto_detect();
 	StartPlayScheduler(&mainPlayer, MODE_LIST_ONCE);
 
+	SynthDitherInit(&synthForAsm, GetRandom() | ((uint16_t)GetRandom() << 8));
 	SchedulerPlaySong(&mainPlayer, GetRandom() % 5);
 	StartAudioOutput();
 #else

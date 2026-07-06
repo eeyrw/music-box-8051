@@ -23,10 +23,11 @@
 ;   偏移 8: pVal_h               — 临时值高字节 (int16_t)
 ;   偏移 9: pSampleVal           — 波形采样值 (int8_t)
 ;
-; Synthesizer 结构体 (83 字节)：
+; Synthesizer 结构体 (85 字节)：
 ;   偏移 0-79:  8 声道 × 10 字节
 ;   偏移 80-81: mixOut (int16_t) — 混合输出累加器
 ;   偏移 82:    lastSoundUnit    — 下次分配声道的编号 (0-7)
+;   偏移 83-84: lfsr (uint16_t) — 抖动 LFSR 状态
 ;====================================================================
 
 	.module SYNTH_CORE_ASM

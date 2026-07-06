@@ -234,6 +234,56 @@ CLIP_LOWER=-128
 	addc a,#0                          ; 1 (传播进位)
 	mov r6,a                           ; 1
 
+.ifne USE_DITHERING
+;====================================================================
+; 3.5. LFSR 抖动 — 16-bit Galois LFSR + ±1 triangular dither
+;
+; 在 8-bit PWM 输出前添加 ±1 LSB 随机抖动，将量化失真转为白噪声。
+; Galois 多项式: x^16 + x^14 + x^13 + x^11 + 1
+; 可用 USE_DITHERING=0 关闭此功能。
+;====================================================================
+
+	; ---- Step 1: 16-bit 算术右移，C = 移位前的 bit 0 ----
+	mov a,(pSynth+pLFSR_h)             ; 1
+	rrc a                              ; 1
+	mov (pSynth+pLFSR_h),a             ; 1
+	mov a,(pSynth+pLFSR_l)             ; 1
+	rrc a                              ; 1
+	mov (pSynth+pLFSR_l),a             ; 1 (6 周期)
+
+	; ---- Step 2: 若旧 LSB=1，XOR 多项式掩码 (平均 50% 触发) ----
+	;             掩码 0x6801 = x^14+x^13+x^11+x^0
+	jnc	dither_no_xor$                 ; 2 (不触发时跳转)
+	mov	a,(pSynth+pLFSR_h)             ; 1
+	xrl	a,#0x68                        ; 1
+	mov	(pSynth+pLFSR_h),a             ; 1
+	mov	a,(pSynth+pLFSR_l)             ; 1
+	xrl	a,#0x01                        ; 1
+	mov	(pSynth+pLFSR_l),a             ; 1 (6 周期)
+	sjmp	dither_apply$                 ; 2
+dither_no_xor$:
+	; a 仍持有移位后的 pLFSR_l
+
+dither_apply$:
+	; ---- Step 3: 取 LFSR LSB 作为抖动位，±1 应用到 r5 ----
+	;             r5 = [0..255] (PWM 8-bit 输出值)
+	mov	c,a.0                          ; 2 (C = 随机位)
+	jnc	dither_sub$                    ; 2
+	; +1 带饱和
+	cjne	r5,#255,dither_add$           ; 2
+	sjmp	dither_done$                  ; 2 (饱和在 255)
+dither_add$:
+	inc	r5                              ; 1
+	sjmp	dither_done$                  ; 2
+dither_sub$:
+	; -1 带饱和
+	cjne	r5,#0,dither_sub_ok$           ; 2
+	sjmp	dither_done$                  ; 2 (饱和在 0)
+dither_sub_ok$:
+	dec	r5                              ; 1
+dither_done$:
+.endif ; USE_DITHERING
+
 	; ---- 4. 输出到 PWMA_CCR2 (PWM DAC) (10 周期) ----
 	mov	dptr,#REG_PWMA_CCR2H
 	mov a,r6

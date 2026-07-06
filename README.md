@@ -102,15 +102,16 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 1. **Wavetable**: Configurable 8-bit signed PCM sample at 32 kHz (current: Square Wave C4, 5,428 samples, 5,306-sample attack + 121-sample loop). `WaveTable.h`/`.inc` define dimensions.
 2. **Phase accumulator**: 16.8 fixed-point per voice, indexed by MIDI note number through a precomputed `WaveTable_Increment` table
 3. **Linear interpolation**: Between adjacent samples using the 8-bit fractional phase component
-4. **Envelope**: Sustain-release model. Notes hold indefinitely at full volume (envelopePos=255). NoteOff sets envelopePos=0, triggering 256-entry decay table advancing at `RELEASE_STEP=6` every 3ms (~128ms release). Stop/EndOfScore release all voices instantly.
+4. **Envelope**: Sustain-release model. Notes hold indefinitely at full volume (envelopePos=255). NoteOff sets envelopePos=0, triggering 256-entry decay table advancing at `RELEASE_STEP=3` every 3ms (~256ms release). Stop/EndOfScore release all voices instantly.
 5. **Mixing**: 8 voices summed into a 16-bit accumulator, then `>>=1`, clipped to [-128, 127], and DC-shifted by +128 for unsigned 8-bit PWM
+6. **Dithering**: Galois 16-bit LFSR adds ±1 LSB triangular dither before PWM output, converting quantization noise to white noise floor. Toggle via `USE_DITHERING` macro in `SynthCore.inc`.
 
 ### Timing
 
 - Timer0 ISR at 32000 Hz, `sysMs` incremented every 32 ticks (1ms)
 - `GetSysMs()` returns 32-bit millisecond uptime, used for all timing
 - Score events: `nextEventMs += delta × 8` (TickPerSecond=125 → 8ms per tick)
-- Envelope decay: every 3ms, advancing by `RELEASE_STEP=6` (~128ms release)
+- Envelope decay: every 3ms, advancing by `RELEASE_STEP=3` (~256ms release)
 - SPI flash operations use `GetSysMs()` for accurate busy-wait timeouts
 
 ### Voice allocation
@@ -198,7 +199,7 @@ The test feeds 9 notes, runs 10,000 iterations, and compares every voice field b
 │   └── PlayerUtil.s                 Legacy stubs (not compiled)
 │
 ├── Synthesizer/                     Audio synthesis engine
-│   ├── Synth.inc                    SynthAsm — 8-voice synthesis core (ISR hot path)
+│   ├── Synth.inc                    SynthAsm — 8-voice synthesis core (ISR hot path, inc. dithering)
 │   ├── SynthCore.inc                Struct offsets + memory layout constants
 │   ├── SynthCoreAsm.s               NoteOnAsm + NoteOffAsm + GenDecayEnvlopeAsm + SynthReleaseAllAsm
 │   ├── SynthCore.c                  C synthesis reference (test only)

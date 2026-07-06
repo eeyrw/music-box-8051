@@ -26,6 +26,11 @@ void SynthInit(Synthesizer *synth)
 	synth->lastSoundUnit = 0;
 	synth->mixOut = 0;
 }
+
+void SynthDitherInit(Synthesizer *synth, uint16_t seed)
+{
+	synth->lfsr = seed ? seed : 0xACE1;
+}
 #ifdef RUN_TEST
 static uint8_t selectVoice(Synthesizer *synth)
 {

@@ -47,8 +47,8 @@ Memory model is **large** (xdata used). Stack-auto is enabled (`--stack-auto`), 
   0x08–0x1F      —       Register Bank 1 (ISR 专用)
   0x20–0x2F      16B     位寻址区
    0x21            1B     Synthesizer struct 起始 (绝对地址)
-   0x21–0x7B       91B    Synthesizer 结构体 (8×11 + 3)
-   0x7C–0xFF       132B   C 栈
+   0x21–0x75       85B    Synthesizer 结构体 (8×10 + 3 + 2B LFSR)
+   0x76–0xFF       138B   C 栈
 ```
 
 #### IRC 时钟注意事项
@@ -279,16 +279,16 @@ while (1) {
 - Timer0 ISR: 32000 Hz, 每 32 个 tick (1ms) 递增 `sysMs` (32-bit)
 - Player 使用 `GetSysMs()` 驱动乐谱事件调度和包络衰减
 - 乐谱 delta (raw tick) × 8 = 毫秒 (TickPerSecond=125, 1000/125=8ms/tick)
-- 包络衰减: 每 3ms 推进 `RELEASE_STEP` (6) 格，约 128ms 完成衰减
+- 包络衰减: 每 3ms 推进 `RELEASE_STEP` (3) 格，约 256ms 完成衰减
 
 ### Fixed memory layout (critical — do not change blindly)
 
 - **Player struct**: SDCC auto-allocated in XRAM (~39 bytes). `SSCR_Player` (19B) + `PlayScheduler` (24B).
-- **Synthesizer struct**: absolute DATA `0x21`, 91 bytes (`SynthCore.inc`, declared in `SynthCoreAsm.s` via `.org`)
+- **Synthesizer struct**: absolute DATA `0x21`, 85 bytes (`SynthCore.inc`, declared in `SynthCoreAsm.s` via `.org`)
 - **sysMsPre + sysMs**: DSEG allocated by `UpdateTick.inc` (5 bytes DATA at compiler-assigned address, 0x10-0x1A)
 - **SPI 缓存**: 1024 字节 XRAM (`SpiFlash.c`)
 - **协议缓冲**: RX ring 256B + pkt_data 260B + tx_buf 264B ≈ 780B XRAM (`Protocol.c`)
-- **8 voices × 11 bytes** each: `increment_frac(0)`, `increment_int(1)`, `wavetablePos_frac(2)`, `wavetablePos_int_l(3)`, `wavetablePos_int_h(4)`, `envelopeLevel(5)`, `envelopePos(6)`, `val_l(7)`, `val_h(8)`, `sampleVal(9)`, `midiNote(10)`
+- **8 voices × 10 bytes** each: `increment_frac(0)`, `increment_int(1)`, `wavetablePos_frac(2)`, `wavetablePos_int_l(3)`, `wavetablePos_int_h(4)`, `envelopeLevel(5)`, `envelopePos(6)`, `val_l(7)`, `val_h(8)`, `sampleVal(9)`
 - ISR uses **register bank 1** (`psw = 0x08`) so R0-R7 do not conflict with C code's bank 0
 
 ### Wavetable synthesis algorithm
@@ -302,7 +302,7 @@ Per-voice per-tick:
 4. Phase advance: `pos_frac += inc_frac; pos_int += inc_int + carry`
 5. Loop point: when `pos_int >= WAVETABLE_LEN`, subtract `WAVETABLE_LOOP_LEN`
 
-After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), write to `PWMA_CCR2` (PWM DAC output).
+After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), optional LFSR dithering (±1 LSB), write to `PWMA_CCR2` (PWM DAC output).
 
 ### Envelope / NoteOff (2026-07 redesign)
 
@@ -314,13 +314,29 @@ After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), wri
 | Decaying | 0..254 | EnvelopeTable[pos] | NoteOff |
 | Silent | 255 | 0 | decay end or release |
 
-**GenDecayEnvlopeAsm** runs every 3ms, advances `envelopePos` by `RELEASE_STEP` (6) for any voice where `envelopePos < 255`. When envelopePos reaches 255 (≈128ms total), envelopeLevel is forced to 0.
+**GenDecayEnvlopeAsm** runs every 3ms, advances `envelopePos` by `RELEASE_STEP` (3) for any voice where `envelopePos < 255`. When envelopePos reaches 255 (≈256ms total), envelopeLevel is forced to 0.
 
 **NoteOffAsm** scans all 8 voices for matching `midiNote`, sets `envelopePos = 0` for **all matches** (handles same-note retrigger). Does not modify wavetablePos — no audio discontinuity.
 
 **SynthReleaseAllAsm** sets `envelopeLevel = 0, envelopePos = 255` on all 8 voices. Called on Stop, Next, Prev, and EndOfScore.
 
-**Envelope constants** (`SynthCore.inc`): `ENVELOP_LEN=256`, `RELEASE_STEP=6`.
+**Envelope constants** (`SynthCore.inc`): `ENVELOP_LEN=256`, `RELEASE_STEP=3`.
+
+### Dithering (2026-07)
+
+8-bit PWM DAC 输出的量化台阶感通过 ±1 LSB 三角抖动转换为白噪声底层。
+
+| 参数 | 值 |
+|------|-----|
+| 算法 | Galois 16-bit LFSR |
+| 多项式 | x^16 + x^14 + x^13 + x^11 + 1 (掩码 0x6801) |
+| LFSR 状态 | `synthForAsm.lfsr` (DATA 0x74-0x75) |
+| 种子 | `GetRandom()` (ADC 噪声) 在上电初始化时设置 |
+| 应用 | ISR 内 DC 偏移后、PWM 写入前，±1 LSB 随机抖动 (带饱和) |
+| ISR 开销 | ~21 cycles 平均，占 ISR 预算的 3% |
+| 开关 | `USE_DITHERING` 宏 (`SynthCore.inc:31`)，设 0 可关闭 |
+
+关闭后 LFSR 字段仍在结构体中但不消耗 ISR 周期。
 
 ### Score format — SSPL + SSCR
 
@@ -484,7 +500,7 @@ Source code is organized into three modules:
 │   ├── SynthCore.{h,c}     Synthesizer/SoundUnit struct definitions + C init
 │   ├── SynthCoreAsm.s      NoteOnAsm + NoteOffAsm + GenDecayEnvlopeAsm + SynthReleaseAllAsm (DATA 0x21)
 │   ├── SynthCore.inc       Struct offsets, POLY_NUM, unitSz, constants
-│   ├── Synth.inc           _SynthAsm — 8-voice ISR hot path
+│   ├── Synth.inc           _SynthAsm — 8-voice ISR hot path (含抖动)
 │   ├── PeriodTimer.s       Timer0 ISR entry (bank 1, includes Synth+UpdateTick)
 │   ├── UpdateTick.inc      32-bit sysMs counter (ISR)
 │   ├── WaveTable.{c,h,inc} Celesta C5 wavetable + pitch increment table

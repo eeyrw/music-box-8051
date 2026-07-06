@@ -40,6 +40,7 @@ typedef struct _Synthesizer
 	SoundUnitUnion SoundUnitUnionList[POLY_NUM];
 	int16_t mixOut;
 	uint8_t lastSoundUnit;
+	uint16_t lfsr;
 } Synthesizer;
 
 typedef struct _VoiceState
@@ -51,6 +52,7 @@ typedef struct _VoiceState
 extern __xdata VoiceState voiceState[POLY_NUM];
 
 extern void SynthInit(Synthesizer *synth);
+extern void SynthDitherInit(Synthesizer *synth, uint16_t seed);
 
 #ifdef RUN_TEST
 extern void NoteOnC(uint8_t note);

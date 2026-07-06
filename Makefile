@@ -41,7 +41,7 @@ DEFS += STC8
 ROOT_DIR     = .
 
 # define include dir
-INCLUDE_DIRS = WavetableSynthesizer
+INCLUDE_DIRS = Player Synthesizer
 
 # define lib dir
 LIBDIR   = 
@@ -49,30 +49,31 @@ LIBDIR   =
 # user specific
 
 SRC 	+= main.c
-SRC 	+= WavetableSynthesizer/AlgorithmTest.c
-SRC 	+= WavetableSynthesizer/SynthCore.c
-SRC 	+= WavetableSynthesizer/Player.c
+SRC 	+= Synthesizer/AlgorithmTest.c
+SRC 	+= Synthesizer/SynthCore.c
+SRC 	+= Player/Player.c
 SRC 	+= UartRedirect.c
 SRC 	+= Bsp.c
 SRC 	+= Protocol.c
-SRC 	+= WavetableSynthesizer/WaveTable.c
-SRC 	+= WavetableSynthesizer/EnvelopTable.c
+SRC 	+= Synthesizer/WaveTable.c
+SRC 	+= Synthesizer/EnvelopTable.c
 
 # Storage backends (both always compiled)
 SRC 	+= Storage.c
 SRC 	+= Storage_Internal.c
 SRC 	+= Storage_SPI.c
 SRC 	+= SpiFlash.c
-SRC 	+= WavetableSynthesizer/scoreList.c
+SRC 	+= scoreList.c
 
 ASM_SRC =
-ASM_SRC   += WavetableSynthesizer/PeriodTimer.s
-ASM_SRC   += WavetableSynthesizer/SynthCoreAsm.s
+ASM_SRC   += Synthesizer/PeriodTimer.s
+ASM_SRC   += Synthesizer/SynthCoreAsm.s
 
-# ASM_SRC   += WavetableSynthesizer/Synth_testbench.s
-# ASM_SRC   += WavetableSynthesizer/UpdateTick_testbench.s
+# ASM_SRC   += Synthesizer/Synth_testbench.s
+# ASM_SRC   += Synthesizer/UpdateTick_testbench.s
 
 INC_DIR  = $(patsubst %, -I%, $(INCLUDE_DIRS))
+AS_INC   = $(INC_DIR)
 
 # run from Flash
 DDEFS	 = $(patsubst %, -D%, $(DEFS))
@@ -86,7 +87,7 @@ OTHER_OUTPUTS += $(ASM_SRC:.s=.sym) $(SRC:.c=.sym)
 
 CFLAGS  = -m$(ARCH) -p$(MCU) --model-$(MODEL) --std-sdcc11
 CFLAGS += -DF_CPU=$(F_CPU)UL -I. -I$(LIBDIR) $(DDEFS) --stack-auto
-ASFLAGS  = -plosgff -l -s
+ASFLAGS  = $(AS_INC) -plosgff -l -s
 LD_FLAGS = -m$(ARCH) -l$(ARCH) --out-fmt-ihx -m$(MCU_MODEL) --model-$(MODEL) $(CODE_SIZE) $(IRAM_SIZE) $(XRAM_SIZE) --stack-auto
 
 #
@@ -102,10 +103,10 @@ ifneq ($(MAKECMDGOALS),clean)
 -include $(DEPS)
 # Beacuse SDCC's assembler has no way to auto output dependency info,
 # the dependency is manually written here.	
-WavetableSynthesizer/PeriodTimer.rel: WavetableSynthesizer/SynthCore.inc WavetableSynthesizer/8051.inc WavetableSynthesizer/Synth.inc WavetableSynthesizer/UpdateTick.inc WavetableSynthesizer/WaveTable.inc
-WavetableSynthesizer/Synth_testbench.rel: WavetableSynthesizer/SynthCore.inc WavetableSynthesizer/8051.inc WavetableSynthesizer/Synth.inc WavetableSynthesizer/UpdateTick.inc
-WavetableSynthesizer/UpdateTick_testbench.rel: WavetableSynthesizer/SynthCore.inc WavetableSynthesizer/8051.inc WavetableSynthesizer/Synth.inc WavetableSynthesizer/UpdateTick.inc
-WavetableSynthesizer/SynthCoreAsm.rel: WavetableSynthesizer/SynthCore.inc WavetableSynthesizer/WaveTable.inc
+Synthesizer/PeriodTimer.rel: Synthesizer/SynthCore.inc Synthesizer/8051.inc Synthesizer/Synth.inc Synthesizer/UpdateTick.inc Synthesizer/WaveTable.inc
+Synthesizer/Synth_testbench.rel: Synthesizer/SynthCore.inc Synthesizer/8051.inc Synthesizer/Synth.inc Synthesizer/UpdateTick.inc
+Synthesizer/UpdateTick_testbench.rel: Synthesizer/SynthCore.inc Synthesizer/8051.inc Synthesizer/Synth.inc Synthesizer/UpdateTick.inc
+Synthesizer/SynthCoreAsm.rel: Synthesizer/SynthCore.inc Synthesizer/WaveTable.inc
 endif
 
 

@@ -239,7 +239,7 @@ midi-to-simplescore --midi song.mid -o ./output --template 8051_sdcc --tickPerSe
 
 # Multi-score SSPL container (generates scoreList.c directly)
 python3 SSPL_Packer.py song1.mid song2.mid ... \
-  -c WavetableSynthesizer/scoreList.c \
+  -c scoreList.c \
   --template 8051_sdcc --tickPerSecond 125 --voiceCenterNote 60
 ```
 
@@ -260,9 +260,9 @@ Test bench wrappers (`Synth_testbench.s`, `UpdateTick_testbench.s`) are **commen
 ### Signal chain (all at 32 kHz from Timer0 ISR)
 
 ```
-Timer0 ISR (PeriodTimer.s, bank 1)
-  └─ SynthAsm (Synth.inc) — 8-voice polyphonic wavetable synthesis
-  └─ UpdateTick (UpdateTick.inc) — 32-bit 毫秒计数器 (sysMs)
+Timer0 ISR (Synthesizer/PeriodTimer.s, bank 1)
+  └─ SynthAsm (Synthesizer/Synth.inc) — 8-voice polyphonic wavetable synthesis
+  └─ UpdateTick (Synthesizer/UpdateTick.inc) — 32-bit 毫秒计数器 (sysMs)
 ```
 
 Main loop:
@@ -377,7 +377,7 @@ State machine: `READY_TO_SWITCH` → `SWITCHING` → `SCORE_PREV/NEXT` → `READ
 
 ### Note assignment
 
-**Free-voice-first + Round-robin fallback** across 8 voices. `NoteOnAsm` (`SynthCoreAsm.s:122`):
+**Free-voice-first + Round-robin fallback** across 8 voices. `NoteOnAsm` (`Synthesizer/SynthCoreAsm.s:122`):
 
 1. Phase A: scan all 8 voices for `envelopeLevel == 0` (fully silent) — reuse immediately
 2. Phase B: if none free, use `lastSoundUnit` cursor (FIFO round-robin, steals oldest note)
@@ -444,13 +444,35 @@ Player (`Player.c`) uses `GetSysMs()` for:
 
 ## Assembly dependency tracking
 
-SDCC's assembler cannot auto-generate dependency files. Changes to `.inc` files will **not** trigger rebuilds unless the Makefile manual deps (lines 96-101) are updated to cover the changed `.inc` file. Always `make clean` after editing `.inc` files.
+SDCC's assembler cannot auto-generate dependency files. Changes to `.inc` files will **not** trigger rebuilds unless the Makefile manual deps (lines 106-109) are updated to cover the changed `.inc` file. Always `make clean` after editing `.inc` files.
 
 ## Files with duplicates / overlaps
 
-- `score.c` existed both at repo root and in `WavetableSynthesizer/`. The Makefile now compiles `WavetableSynthesizer/scoreList.c`. Both `score.c` copies are removed.
+- `score.c` existed both at repo root and in `WavetableSynthesizer/`. The Makefile now compiles `scoreList.c` at repo root. Both `score.c` copies are removed.
 - `PlayerUtil.s` is removed from build — Player is auto-allocated by SDCC.
 - `Player.inc` is documentation only, not compiled.
+
+## Directory Structure (2026-07 reorganization)
+
+Source code is organized into three modules:
+
+```
+./                          Root: main, Bsp, Protocol, Storage, SpiFlash
+├── Player/                 Score decoder + multi-song scheduler
+│   └── Player.{c,h}        (SSPL container, SSCR decoder, PlayScheduler)
+├── Synthesizer/            Audio synthesis engine (wave + envelope + ISR)
+│   ├── SynthCore.{h,c}     Synthesizer/SoundUnit struct definitions + C init
+│   ├── SynthCoreAsm.s      NoteOnAsm + GenDecayEnvlopeAsm (DATA 0x21)
+│   ├── SynthCore.inc       Struct offsets, POLY_NUM, unitSz, constants
+│   ├── Synth.inc           _SynthAsm — 8-voice ISR hot path
+│   ├── PeriodTimer.s       Timer0 ISR entry (bank 1, includes Synth+UpdateTick)
+│   ├── UpdateTick.inc      32-bit sysMs counter (ISR)
+│   ├── WaveTable.{c,h,inc} Celesta C5 wavetable + pitch increment table
+│   └── EnvelopTable.{c,h}  256-entry decay envelope
+└── tools/                   Python CLI + boot tools
+```
+
+Include paths: `-IPlayer -ISynthesizer` (C and ASM). Both directories are always searched.
 
 ## Assembly optimization opportunities
 

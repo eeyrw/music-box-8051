@@ -125,7 +125,7 @@ pip3 install -e /path/to/midi-to-simplescore
 
 # Generate scoreList.c from MIDI files (internal flash)
 python3 SSPL_Packer.py song1.mid song2.mid ... \
-  -c WavetableSynthesizer/scoreList.c \
+  -c scoreList.c \
   --template 8051_sdcc --tickPerSecond 125 --voiceCenterNote 60
 ```
 
@@ -185,25 +185,30 @@ The test feeds 9 notes, runs 10,000 iterations, and compares every voice field b
 ├── Storage_Internal.c               Internal __code flash backend
 ├── Storage_SPI.c                    SPI flash ScoreStream wrapper
 ├── SpiFlash.c / SpiFlash.h          Generic SPI NOR flash driver (bit-bang + cache)
+├── scoreList.c                      SSPL container with multiple SSCR scores
 ├── Makefile                         SDCC build system + stcgal flash target
 │
-├── WavetableSynthesizer/
+├── Player/                          Score decoder + multi-song scheduler
+│   ├── Player.c                     SSCR decoder + SSPL container + scheduler
+│   ├── Player.h                     Player struct + scheduler API
+│   ├── Player.inc                   Assembly struct layout (documentation only)
+│   └── PlayerUtil.s                 Legacy stubs (not compiled)
+│
+├── Synthesizer/                     Audio synthesis engine
 │   ├── Synth.inc                    SynthAsm — 8-voice synthesis core (ISR hot path)
 │   ├── SynthCore.inc                Struct offsets + memory layout constants
 │   ├── SynthCoreAsm.s               NoteOnAsm + GenDecayEnvlopeAsm
 │   ├── SynthCore.c                  C synthesis reference (test only)
 │   ├── SynthCore.h                  SoundUnit/Synthesizer struct definitions
 │   ├── UpdateTick.inc               sysMs millisecond counter (ISR)
-│   ├── PeriodTimer.s                Timer0 ISR entry (bank switch, include Synth+UpdateTick)
+│   ├── PeriodTimer.s                Timer0 ISR entry (bank switch)
 │   ├── PeriodTimer.h                sysMs extern declarations
-│   ├── Player.c                     SSCR decoder + SSPL container + multi-song scheduler
-│   ├── Player.h                     Player struct + scheduler API
 │   ├── WaveTable.c                  Celesta C5 wavetable data (21,870 samples)
 │   ├── WaveTable.h / WaveTable.inc  Wavetable dimensions + constants
 │   ├── EnvelopTable.c               Decay envelope lookup table (256 entries)
 │   ├── EnvelopeTable.h              Envelope table declaration
 │   ├── AlgorithmTest.c              C-vs-ASM verification suite (RUN_TEST only)
-│   └── scoreList.c                  SSPL container with multiple SSCR scores
+│   └── 8051.inc                     SFR address constants
 │
 ├── tools/
 │   ├── musicbox_proto.py            Full serial protocol CLI client

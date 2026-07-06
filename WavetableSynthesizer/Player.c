@@ -234,6 +234,10 @@ void PlaySchedulerProcess(Player *player)
         SchedulerPlayIndex(player, player->scheduler.currentScoreIndex);
         break;
 
+    case SCHEDULER_SCORE_DIRECT:
+        SchedulerPlayIndex(player, player->scheduler.targetScoreIndex);
+        break;
+
     case SCHEDULER_STOP:
         IntoPowerDown();
         break;
@@ -274,7 +278,10 @@ void StartPlayScheduler(Player *player, uint8_t mode)
 
 void SchedulerPlaySong(Player *player, int32_t index)
 {
-    SchedulerPlayIndex(player, index);
+    player->scheduler.targetScoreIndex = index;
+    player->scheduler.switchDirect = SCHEDULER_SCORE_DIRECT;
+    player->scheduler.status = SCHEDULER_SWITCHING;
+    StopDecode(player);
 }
 
 void StopPlayScheduler(Player *player)

@@ -75,6 +75,7 @@ enum SCHEDULER_STATUS
     SCHEDULER_SWITCHING,
     SCHEDULER_SCORE_PREV,
     SCHEDULER_SCORE_NEXT,
+    SCHEDULER_SCORE_DIRECT,
     SCHEDULER_STOP,
 };
 
@@ -99,6 +100,7 @@ typedef struct _PlayScheduler
     ScoreStream ssplStream;                // 完整 SSPL 数据流
     uint8_t status;                         // 调度器状态
     uint8_t switchDirect;                   // 切歌方向
+    int32_t targetScoreIndex;              // SET_SONG 目标索引
 } PlayScheduler;
 
 // Player: 播放器总体结构

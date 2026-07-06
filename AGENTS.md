@@ -287,7 +287,7 @@ while (1) {
 - **Synthesizer struct**: absolute DATA `0x21`, 83 bytes (`SynthCore.inc`, declared in `SynthCoreAsm.s` via `.org`)
 - **sysMsPre + sysMs**: DSEG allocated by `UpdateTick.inc` (5 bytes DATA at compiler-assigned address, 0x10-0x1A)
 - **SPI 缓存**: 1024 字节 XRAM (`SpiFlash.c`)
-- **协议缓冲**: RX ring 128B + pkt_data 260B + tx_buf 264B ≈ 652B XRAM (`Protocol.c`)
+- **协议缓冲**: RX ring 256B + pkt_data 260B + tx_buf 264B ≈ 780B XRAM (`Protocol.c`)
 - **8 voices × 10 bytes** each: `increment_frac(0)`, `increment_int(1)`, `wavetablePos_frac(2)`, `wavetablePos_int_l(3)`, `wavetablePos_int_h(4)`, `envelopeLevel(5)`, `envelopePos(6)`, `val_l(7)`, `val_h(8)`, `sampleVal(9)`
 - ISR uses **register bank 1** (`psw = 0x08`) so R0-R7 do not conflict with C code's bank 0
 

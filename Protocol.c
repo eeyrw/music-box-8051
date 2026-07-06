@@ -6,7 +6,7 @@
 #include "SpiFlash.h"
 #endif
 
-#define RX_BUF_SIZE  128
+#define RX_BUF_SIZE  256
 #define RX_MASK      (RX_BUF_SIZE - 1)
 
 #define PKT_BUF_SIZE 260

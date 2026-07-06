@@ -171,19 +171,22 @@ SCLK (P3.2) 和 CS# (P3.5) 接线正确。
 
 ### Storage Abstraction Layer
 
-乐谱存储通过 `Storage.h` 定义的 `ScoreStream` 抽象访问。
+乐谱存储通过 `Storage.h` 定义的 `ScoreStream` (12-byte 不透明缓冲) 抽象访问。后端实现在 `Storage_Internal.c` 或 `Storage_SPI.c`。
 
 ```
-内置 FLASH (默认):                SPI FLASH (STORAGE_BACKEND_SPI):
-ScoreStream {                     ScoreStream {
-    __code uint8_t *data;  (2B)       uint32_t base_addr;  (4B)
-    uint32_t pos;          (4B)       uint32_t pos;        (4B)
-    uint32_t size;         (4B)       uint32_t size;       (4B)
-}   总计 10B                      }   总计 12B
+内置 FLASH (Storage_Internal.c):     SPI FLASH (Storage_SPI.c):
+ScoreStream {                        ScoreStream {
+    uint8_t _[12];  (不透明)              uint8_t _[12];  (不透明)
+    实际: __code ptr(2B)+pos(4B)+size(4B)   实际: base_addr(4B)+pos(4B)+size(4B)
+}                                   }
 ```
 
-SSCR_Player 内置: 17B | SPI: 19B
-PlayScheduler 内置: 22B | SPI: 24B
+Player 不感知后端差异，统一调用:
+```c
+storage_init();                      // 初始化 (内部版本 no-op, SPI 版本调用 SpiFlash_Init)
+stream_init(&stream, storage_get_base_addr(), size);  // 打开乐谱流
+stream_read / stream_u8 / stream_u16 / stream_u32     // 数据读取
+```
 
 ### PWM Output Pins
 
@@ -194,43 +197,35 @@ PlayScheduler 内置: 22B | SPI: 24B
 
 - UART1 (P3.0/P3.1) → CH340E → USB-C: programming + command interface at **115200 baud**
 - UART2 (P1.0/P1.1) available at TP_RXD2/TP_TXD2 test points
-- UART commands: `0xFE` (prev), `0xFD` (next), `0xDD` (software reset → `IAP_CONTR = 0x60`)
+- Serial protocol: framed binary `SYNC(0x5A) | CMD | LEN | PAYLOAD | CHECKSUM`, see `Protocol.h`
+- Protocol tool: `tools/musicbox_proto.py` (full CLI), `tools/boot.py` (reset-only for make flash)
 
 ## Storage Backend Switching
 
 ```bash
-make                  # Internal __code FLASH (movc a,@a+dptr)
-                      #   includes scoreList.c (~29KB score data in MCU flash)
-
-make STORAGE=spi      # External SPI FLASH (GPIO bit-bang on P3.2-P3.5)
-                      #   excludes scoreList.c (data pre-programmed on SPI chip)
-                      #   calls spi_storage_init() before playback
-                      #   SCORE_BASE_ADDR = 0x00000000UL (configurable in Player.c)
-                      #   1KB XRAM read-cache (CACHE_SIZE in Storage_SPI.c)
+make                  # Internal __code FLASH (includes scoreList.c ~29KB)
+make STORAGE=spi      # External SPI FLASH (excludes scoreList.c, adds SpiFlash.c)
 ```
 
-To change SPI flash base address: edit `Player.c` → `#define SCORE_BASE_ADDR`.
-
-To adjust cache size: edit `Storage_SPI.c` → `#define CACHE_SIZE` (current: 1024, XRAM physical: 3KB).
-
-To switch to hardware SPI after fly-wire fix: modify `Storage_SPI.c` → `spi_storage_init()`:
-replace GPIO bit-bang with `SPI_USE_P35P34P33P32()` + `SPI_Enable()` + hardware SPI register access.
-
-### Cache Implementation (`Storage_SPI.c`)
+### File Layout
 
 ```
-static __xdata uint8_t  spi_cache[CACHE_SIZE];   // 1024B 缓冲区
-static uint32_t          spi_cache_base;           // 缓存块对齐基地址
-static uint8_t           spi_cache_valid;          // 缓存有效标志
+./Storage.h              ← 抽象接口: ScoreStream (12-byte 不透明缓冲) + storage_init/get_base_addr
+./Storage_Internal.c     ← 内置 __code FLASH 后端
+./Storage_SPI.c          ← SPI FLASH 后端，委托 SpiFlash 驱动
+./SpiFlash.h             ← 通用 SPI NOR FLASH 驱动接口
+./SpiFlash.c             ← GPIO 位模拟 + 1KB XRAM 读缓存
 ```
 
-工作机制:
-- `stream_read/stream_peek` (流式顺序读): 命中率 ≈ 511/512，每 1024 字节触发一次 SPI 整块加载
-- `stream_u8/u16/u32` (随机偏移读): `read_bytes_cached` 处理跨块边界，自动分段
-- Cache miss → `cache_fill()` 一次读满 1024 字节 → 后续访问走 XRAM
-- `spi_storage_init()` 中复位 `cache_valid=0`
+Player 不感知后端，统一调用 `storage_init()` / `storage_get_base_addr()` / `stream_*`。
 
-XRAM 占用: ~1066 字节 (Player 42 + Cache 1024), 物理 3K 的 35%
+### SPI Flash Driver (`SpiFlash.c`)
+
+- GPIO 位模拟 P3.2(SCLK) / P3.3(MOSI) / P3.4(MISO) / P3.5(CS#)
+- 1KB XRAM 读缓存，流式顺序读命中率 ≈ 511/512
+- 同步写入/擦除接口，内部 `spi_wait_busy(ms)` 使用 `GetSysMs()` 精确超时
+- FLASH 参数: `SPI_FLASH_BASE_ADDR = 0x00000000`, `SPI_FLASH_SIZE = 1MB`
+- 如需硬件 SPI: 飞线交换 P3.3/P3.4 后修改 `SpiFlash.c`
 
 ## Score Generation
 
@@ -248,13 +243,13 @@ python3 SSPL_Packer.py song1.mid song2.mid ... \
   --template 8051_sdcc --tickPerSecond 125 --voiceCenterNote 60
 ```
 
-`--tickPerSecond 125` is required: Timer0 runs at 32000 Hz, score compare is `currentTick>>8`, giving 32000/256 = 125 effective ticks/sec.
+`--tickPerSecond 125` is required: Timer0 runs at 32000 Hz, score timing uses `GetSysMs()` with `delta × 8` ms conversion (since 1000/125 = 8ms per tick in the data stream).
 
 ## Test / Verification
 
 To build the C-vs-ASM verification suite, edit Makefile `DEFS`: remove `NO_RUN_TEST`, add `RUN_TEST`. Then `main()` calls `TestProcess()` (see `AlgorithmTest.c`).
 
-- `TestUpdateTickFunc()` — verifies 32-bit `currentTick` increment over 65535 calls
+- `TestUpdateTickFunc()` — verifies 32-bit `sysMs` increment over 65535 calls
 - `TestSynth()` — feeds 9 notes, runs 10000 iterations comparing C and ASM synth paths
 - Tolerance: `mixOut` diff > 8 is an error; `val` diff > 2 is an error; all other fields must match exactly
 
@@ -267,16 +262,32 @@ Test bench wrappers (`Synth_testbench.s`, `UpdateTick_testbench.s`) are **commen
 ```
 Timer0 ISR (PeriodTimer.s, bank 1)
   └─ SynthAsm (Synth.inc) — 8-voice polyphonic wavetable synthesis
-  └─ UpdateTick (UpdateTick.inc) — 32-bit tick counter
+  └─ UpdateTick (UpdateTick.inc) — 32-bit 毫秒计数器 (sysMs)
 ```
 
-Main loop polls `PlayerProcess()` which decodes SSCR events, feeds notes via `NoteOnAsm`, and triggers envelope decay via `GenDecayEnvlopeAsm`.
+Main loop:
+```c
+while (1) {
+    PlayerProcess(&mainPlayer);   // SSCR 解码 + 调度器
+    VisualizeSound();             // Abs(mixOut) << 1 → PWM
+    Proto_Process();              // 串口协议处理
+}
+```
+
+### Timing
+
+- Timer0 ISR: 32000 Hz, 每 32 个 tick (1ms) 递增 `sysMs` (32-bit)
+- Player 使用 `GetSysMs()` 驱动乐谱事件调度和包络衰减
+- 乐谱 delta (raw tick) × 8 = 毫秒 (TickPerSecond=125, 1000/125=8ms/tick)
+- 包络衰减: 每 3ms 推进一格
 
 ### Fixed memory layout (critical — do not change blindly)
 
-- **Player struct**: SDCC auto-allocated in XRAM (~39 bytes). `SSCR_Player` (17B) + `PlayScheduler` (22B). With SPI: 19B + 24B.
+- **Player struct**: SDCC auto-allocated in XRAM (~39 bytes). `SSCR_Player` (19B) + `PlayScheduler` (24B).
 - **Synthesizer struct**: absolute DATA `0x21`, 83 bytes (`SynthCore.inc`, declared in `SynthCoreAsm.s` via `.org`)
-- **currentTick + decayGenTick**: DSEG allocated by `UpdateTick.inc` (5 bytes DATA at compiler-assigned address)
+- **sysMsPre + sysMs**: DSEG allocated by `UpdateTick.inc` (5 bytes DATA at compiler-assigned address, 0x10-0x1A)
+- **SPI 缓存**: 1024 字节 XRAM (`SpiFlash.c`)
+- **协议缓冲**: RX ring 128B + pkt_data 260B + tx_buf 264B ≈ 652B XRAM (`Protocol.c`)
 - **8 voices × 10 bytes** each: `increment_frac(0)`, `increment_int(1)`, `wavetablePos_frac(2)`, `wavetablePos_int_l(3)`, `wavetablePos_int_h(4)`, `envelopeLevel(5)`, `envelopePos(6)`, `val_l(7)`, `val_h(8)`, `sampleVal(9)`
 - ISR uses **register bank 1** (`psw = 0x08`) so R0-R7 do not conflict with C code's bank 0
 
@@ -295,7 +306,7 @@ After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), wri
 
 ### Score format — SSPL + SSCR
 
-Scores are stored as a single `__code unsigned char Score[]` in flash using the **SSPL** container format containing multiple **SSCR** scores.
+Scores are stored as a single `__code unsigned char Score[]` in flash (internal build) or pre-programmed on SPI FLASH (SPI build) using the **SSPL** container format containing multiple **SSCR** scores.
 
 #### SSPL container (12-byte header)
 
@@ -357,16 +368,56 @@ void StartPlayScheduler(Player *player, uint8_t mode);
 // mode: MODE_ORDER_PLAY (loop) / MODE_LIST_ONCE / MODE_SINGLE_SONG
 ```
 
-UART commands at 115200 baud:
-- `0xFE`: previous song
-- `0xFD`: next song
-- `0xDD`: software reset (`IAP_CONTR = 0x60`)
+Serial protocol (115200 baud, framed binary, see `Protocol.h`):
+- `0x12` (CMD_PREV): previous song
+- `0x13` (CMD_NEXT): next song
+- `0x02` (CMD_RESET): software reset (`IAP_CONTR = 0x60`)
 
 State machine: `READY_TO_SWITCH` → `SWITCHING` → `SCORE_PREV/NEXT` → `READY_TO_SWITCH` (or `STOP` → IDLE power-down).
 
 ### Note assignment
 
 Round-robin across 8 voices. `NoteOnAsm` runs inside `clr ea`/`setb ea` critical section.
+
+## Serial Protocol
+
+Full framed binary protocol documented in `Protocol.h`. Summary:
+
+| Command | Code | Description |
+|---------|------|-------------|
+| PING | 0x00 | Return firmware version string |
+| GET_INFO | 0x01 | Version, storage type, song count |
+| RESET | 0x02 | Soft reset to ISP bootloader |
+| UPTIME | 0x03 | System uptime in ms (uint32_t) |
+| MEM_INFO | 0x04 | Stack pointer, free stack bytes |
+| AUDIO_INFO | 0x05 | mixOut, active voice count, lastSoundUnit |
+| ADC_READ | 0x06 | Read ADC channel (uint16_t) |
+| VOICE_DUMP | 0x07 | Full 8-voice state snapshot (80 bytes) |
+| PLAY/STOP/PREV/NEXT | 0x10-13 | Playback control |
+| SET_SONG | 0x14 | Switch to song index |
+| GET_STATUS | 0x15 | Current song, playing state |
+| FLASH_INFO/ID | 0x20/25 | SPI flash parameters / JEDEC ID |
+| FLASH_ERASE/ERASE_ALL | 0x21/22 | Sector/chip erase |
+| FLASH_READ | 0x23 | Read bytes from SPI flash |
+| FLASH_WRITE | 0x24 | Write bytes to SPI flash |
+
+Frame format: `SYNC(0x5A) | CMD | LEN | [PAYLOAD] | CHECKSUM`
+Response: `SYNC(0x5A) | CMD\|0x80 | STATUS | LEN | [DATA] | CHECKSUM`
+
+Python CLI: `tools/musicbox_proto.py --port /dev/ttyUSB0 <command> [args...]`
+
+## System Timer API
+
+```c
+uint32_t GetSysMs(void);  // 32-bit millisecond counter, driven by Timer0 ISR
+```
+
+SPI flash driver (`SpiFlash.c`) uses `GetSysMs()` for accurate busy-wait timeouts:
+- Sector erase: 1500ms, Chip erase: 30000ms, Page program: 1000ms
+
+Player (`Player.c`) uses `GetSysMs()` for:
+- Score event scheduling: `nextEventMs += delta * 8` (125 ticks/sec → 8ms/tick)
+- Envelope decay: every 3ms
 
 ## Assembly dependency tracking
 
@@ -396,8 +447,8 @@ SDCC's assembler cannot auto-generate dependency files. Changes to `.inc` files 
 
 ### UpdateTick.inc
 
-- **32-bit increment** (lines 18-29): 4 separate `addc` instructions. The low byte could use `inc _currentTick` instead of `mov a,_currentTick; add a,#1; mov _currentTick,a`, saving 1 instruction and 1 byte.
-- **decayGenTick compare** (lines 31-34): `mov a,#DECAY_TIME_FACTOR; clr cy; subb a,_decayGenTick; jc` works but the `subb` destroys A. Equivalent to `cjne a,_decayGenTick,$+3; jnc updateDecayGenTickEnd$`.
+- **sysMs 32-bit increment**: 预分频器每 32 个 ISR tick 触发一次 ms 递增。4 条 `addc` 指令链。
+- **Prescaler compare**: `inc _sysMsPre; mov a,_sysMsPre; clr c; subb a,#32; jc` 实现 32 分频。
 
 ### PeriodTimer.s
 

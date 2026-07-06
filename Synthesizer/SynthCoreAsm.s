@@ -112,8 +112,10 @@ releasePosWrite'Idx'$:
 ;
 ; 参数: dpl = MIDI 音符编号 (0-127)
 ;
-; 遍历 8 个声道的 XRAM voiceState，找到 midiNote 匹配且
-; envelopeLevel > 0 的声道，将 envelopePos 置为合适的衰减起点。
+; 遍历 XRAM voiceState，找到 midiNote 匹配且活跃的声道，
+; 将 envelopePos 置 0。衰减由 GenDecayEnvlopeAsm 驱动，
+; 通过 voiceState.velocity 缩放 EnvelopeTable[pos] 实现与当前
+; 音量无缝衔接，无需查表找起点。
 ;====================================================================
 _NoteOffAsm:
 	pSynth = SynthAbsAddr
@@ -144,44 +146,12 @@ NoteOffScanLoop:
 	mov a, r7                        ; a = 原始保存的 dpl (目标音符)
 	cjne a, 0x04, NoteOffNextVoice   ; 与 r4 (DATA 0x04) 比较
 
-	; ---- 匹配: 查表找衰减起点 ----
-	; 读 XRAM voiceState[r2].velocity (用于参考)
-	inc dptr                         ; dptr → voiceState[r2].velocity
-	movx a, @dptr
-	mov r4, a                        ; r4 = velocity scale (备用)
-
-	; 读当前 envelopeLevel
-	mov a, r3
-	add a, #pEnvelopeLevel
-	mov r1, a
-	mov a, @r1
-	mov r5, a                        ; r5 = current level
-
-	; 扫描 EnvelopeTable 找 table[pos] >= level 的最小 pos (步进 RELEASE_STEP)
-	mov r6, #0                       ; r6 = scan pos
-	mov dptr, #_EnvelopeTable
-NoteOffScanLevel:
-	mov a, r6
-	movc a, @a+dptr                  ; a = EnvelopeTable[r6]
-	clr c
-	subb a, r5                       ; table[r6] - level
-	jnc NoteOffFoundPos              ; table[r6] >= level → 找到
-
-	mov a, r6
-	add a, #RELEASE_STEP
-	jc NoteOffCap255
-	mov r6, a
-	cjne a, #(ENVELOP_LEN-1), NoteOffScanLevel
-NoteOffCap255:
-	mov r6, #(ENVELOP_LEN-1)
-NoteOffFoundPos:
-
-	; 写 envelopePos = r6
+	; ---- 匹配: envelopePos = 0 (触发衰减) ----
+	; velocity 缩放由 GenDecayEnvlopeAsm 处理: EnvelopeTable[pos]*vel/256
 	mov a, r3
 	add a, #pEnvelopePos
 	mov r1, a
-	mov a, r6
-	mov @r1, a
+	mov @r1, #0
 
 NoteOffNextVoice:
 	mov a, r3

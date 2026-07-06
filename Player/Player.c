@@ -30,6 +30,20 @@
 
 static uint32_t lastDecayMs;
 
+static const __code uint8_t velocityCurve[128] = {
+      0,   0,   0,   0,   0,   0,   0,   0,   1,   1,   1,   1,
+      2,   2,   3,   3,   4,   4,   5,   5,   6,   6,   7,   8,
+      9,   9,  10,  11,  12,  13,  14,  15,  16,  17,  18,  19,
+     20,  21,  22,  24,  25,  26,  27,  29,  30,  32,  33,  34,
+     36,  37,  39,  41,  42,  44,  46,  47,  49,  51,  53,  55,
+     56,  58,  60,  62,  64,  66,  68,  70,  73,  75,  77,  79,
+     81,  84,  86,  88,  91,  93,  96,  98, 101, 103, 106, 108,
+    111, 114, 116, 119, 122, 125, 128, 130, 133, 136, 139, 142,
+    145, 148, 151, 154, 158, 161, 164, 167, 171, 174, 177, 181,
+    184, 187, 191, 194, 198, 201, 205, 209, 212, 216, 220, 223,
+    227, 231, 235, 239, 243, 247, 251, 255
+};
+
 /* ================================================================
  * SSCR 解码器内部
  * ================================================================ */
@@ -83,14 +97,18 @@ static uint8_t sscr_dispatch_event(SSCR_Player *d, uint8_t byte)
 
     if (group != 0)
     {
+        uint8_t vel = 127;
         if (d->flags & 0x01)
         {
-            uint8_t vel;
             if (!sscr_read_byte(d, &vel))
                 return 0;
         }
         note = (uint8_t)((int)note - d->totalTranspose);
         NoteOnAsm(note);
+        {
+            uint8_t idx = (synthForAsm.lastSoundUnit + POLY_NUM - 1) % POLY_NUM;
+            synthForAsm.SoundUnitUnionList[idx].split.envelopeLevel = velocityCurve[vel];
+        }
     }
     else
     {

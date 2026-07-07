@@ -63,6 +63,8 @@ CMD_FLASH_ERASE_ALL= 0x22
 CMD_FLASH_READ     = 0x23
 CMD_FLASH_WRITE    = 0x24
 CMD_FLASH_READ_ID  = 0x25
+CMD_ADSR_GET       = 0x30
+CMD_ADSR_SET       = 0x31
 
 STATUS_OK            = 0x00
 STATUS_UNKNOWN_CMD   = 0x01
@@ -308,26 +310,29 @@ class MusicBoxClient:
 
     def voice(self):
         data = self._do_cmd(CMD_VOICE_DUMP)
+        state_names = {0: "SILENT", 1: "ATTACK", 2: "DECAY", 3: "SUSTAIN", 4: "RELEASE"}
         for v in range(8):
-            off = v * 11
-            fields = data[off:off + 11]
+            off = v * 12
+            fields = data[off:off + 12]
             inc_frac  = fields[0]
             inc_int   = fields[1]
             pos_frac  = fields[2]
             pos_int   = fields[3] | (fields[4] << 8)
             env_level = fields[5]
-            env_pos   = fields[6]
-            val       = fields[7] | (fields[8] << 8)
+            val       = fields[6] | (fields[7] << 8)
             if val & 0x8000:
                 val -= 0x10000
-            sample    = fields[9]
-            midi_note = fields[10]
+            sample    = fields[8] if fields[8] < 128 else fields[8] - 256
+            midi_note = fields[9]
+            velocity  = fields[10]
+            env_state = fields[11]
             active = "ACTIVE" if env_level > 0 else "idle  "
             print(
                 f"  V{v} [{active}] inc={inc_frac:#04x},{inc_int:#04x}  "
                 f"pos={pos_frac:#04x},{pos_int:#06x}  "
-                f"env={env_level:#04x}(lvl) {env_pos:#04x}(step)  "
-                f"val={val:+d}  sample={sample:#04x}  note={midi_note}"
+                f"env={env_level:#04x}(lvl)  "
+                f"val={val:+d}  sample={sample:+d}  note={midi_note}"
+                f"  vel={velocity}  state={state_names.get(env_state, str(env_state))}"
             )
 
     def sysinfo(self):
@@ -369,6 +374,22 @@ class MusicBoxClient:
     def note_off(self, note):
         self._do_cmd(CMD_NOTE_OFF, struct.pack("B", note))
         print(f"NoteOff note={note}")
+
+    def adsr_get(self):
+        data = self._do_cmd(CMD_ADSR_GET)
+        (env_max, tick_ms, attack_step, decay_step, sustain_thr,
+         sustain_decay, release_step) = struct.unpack("BBBBBBB", data)
+        att_dur = ((env_max + attack_step - 1) // attack_step) * tick_ms if attack_step else 0
+        dec_delta = env_max - sustain_thr
+        dec_dur = ((dec_delta + decay_step - 1) // decay_step) * tick_ms if decay_step else 0
+        rel_dur = ((sustain_thr + release_step - 1) // release_step) * tick_ms if release_step else 0
+        print(f"ADSR Parameters (tick={tick_ms}ms):")
+        print(f"  ENV_MAX:        {env_max}")
+        print(f"  ATTACK:         step={attack_step:2d}  → {att_dur:3d}ms  (target ~{att_dur}ms)")
+        print(f"  DECAY:          step={decay_step:2d}  → {dec_dur:3d}ms  (delta={dec_delta}, to SUSTAIN_THR={sustain_thr})")
+        print(f"  SUSTAIN_THR:    {sustain_thr}")
+        print(f"  SUSTAIN_DECAY:  {sustain_decay}  (0=flat)")
+        print(f"  RELEASE:        step={release_step:2d}  → {rel_dur:3d}ms  (linear, from SUSTAIN_THR)")
 
     def close(self):
         self.ser.close()
@@ -453,6 +474,8 @@ def main():
                 sys.exit("flash-write requires ADDR and INFILE arguments")
             addr = int(args.args[0], 0)
             client.flash_write(addr, args.args[1])
+        elif cmd == "adsr-get":
+            client.adsr_get()
         else:
             sys.exit(f"Unknown command: {cmd}")
     finally:

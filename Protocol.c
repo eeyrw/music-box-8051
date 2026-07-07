@@ -364,24 +364,25 @@ static void dispatch_command(void)
 
 	case CMD_VOICE_DUMP:
 	{
-		uint8_t i, j, buf[88];
+		uint8_t i, j, buf[96];
 		for (i = 0; i < POLY_NUM; i++)
 		{
 			SoundUnitSplit *su = &synthForAsm.SoundUnitUnionList[i].split;
-			j = i * 11;
+			j = i * 12;
 			buf[j + 0] = su->increment_frac;
 			buf[j + 1] = su->increment_int;
 			buf[j + 2] = su->wavetablePos_frac;
 			buf[j + 3] = (uint8_t)(su->wavetablePos_int);
 			buf[j + 4] = (uint8_t)(su->wavetablePos_int >> 8);
 			buf[j + 5] = su->envelopeLevel;
-			buf[j + 6] = su->envelopePos;
-			buf[j + 7] = (uint8_t)(su->val);
-			buf[j + 8] = (uint8_t)(su->val >> 8);
-			buf[j + 9] = (uint8_t)(su->sampleVal);
-			buf[j + 10] = voiceState[i].midiNote;
+			buf[j + 6] = (uint8_t)(su->val);
+			buf[j + 7] = (uint8_t)(su->val >> 8);
+			buf[j + 8] = (uint8_t)(su->sampleVal);
+			buf[j + 9] = voiceState[i].midiNote;
+			buf[j + 10] = voiceState[i].velocity;
+			buf[j + 11] = voiceState[i].envelopeState;
 		}
-		send_data_response(CMD_VOICE_DUMP, STATUS_OK, buf, 88);
+		send_data_response(CMD_VOICE_DUMP, STATUS_OK, buf, 96);
 		break;
 	}
 
@@ -429,7 +430,7 @@ static void dispatch_command(void)
 			break;
 		}
 		vel = (pkt_len >= 2) ? pkt_data[1] : 127;
-		NoteOnAsm(pkt_data[0], velocityCurve[vel]);
+		NoteOnAsm(pkt_data[0], vel);
 		send_response_ok(CMD_NOTE_ON);
 		break;
 	}
@@ -510,6 +511,24 @@ static void dispatch_command(void)
 			cmd_flash_erase_all();
 		else if (pkt_cmd == CMD_FLASH_WRITE)
 			cmd_flash_write();
+		break;
+
+	case CMD_ADSR_GET:
+	{
+		uint8_t buf[7];
+		buf[0] = ADSR_ENV_MAX;
+		buf[1] = ADSR_TICK_MS;
+		buf[2] = ADSR_ATTACK_RATE;
+		buf[3] = ADSR_DECAY_RATE;
+		buf[4] = ADSR_SUSTAIN_THRESHOLD;
+		buf[5] = ADSR_SUSTAIN_DECAY_RATE;
+		buf[6] = ADSR_RELEASE_RATE;
+		send_data_response(CMD_ADSR_GET, STATUS_OK, buf, 7);
+		break;
+	}
+
+	case CMD_ADSR_SET:
+		send_response_err(CMD_ADSR_SET, STATUS_NOT_SUPPORTED);
 		break;
 
 	default:

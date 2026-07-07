@@ -25,6 +25,9 @@
 #define CMD_SET_SONG      0x14
 #define CMD_GET_STATUS    0x15
 
+#define CMD_ADSR_GET      0x30
+#define CMD_ADSR_SET      0x31
+
 #define CMD_FLASH_INFO    0x20
 #define CMD_FLASH_ERASE   0x21
 #define CMD_FLASH_ERASE_ALL 0x22

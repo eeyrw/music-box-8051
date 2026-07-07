@@ -2,8 +2,53 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "WaveTable.h"
+#include "Bsp.h"
 
 __xdata VoiceState voiceState[POLY_NUM];
+
+#if VELOCITY_CURVE == VEL_CURVE_POWER2
+const __code uint8_t AdsrCurveTable[128] = {  /* level = (x/127)^2 * 255 */
+      0,   0,   0,   0,   0,   0,   0,   0,   1,   1,   1,   1,
+      2,   2,   3,   3,   4,   4,   5,   5,   6,   6,   7,   8,
+      9,   9,  10,  11,  12,  13,  14,  15,  16,  17,  18,  19,
+     20,  21,  22,  24,  25,  26,  27,  29,  30,  32,  33,  34,
+     36,  37,  39,  41,  42,  44,  46,  47,  49,  51,  53,  55,
+     56,  58,  60,  62,  64,  66,  68,  70,  73,  75,  77,  79,
+     81,  84,  86,  88,  91,  93,  96,  98, 101, 103, 106, 108,
+    111, 114, 116, 119, 122, 125, 128, 130, 133, 136, 139, 142,
+    145, 148, 151, 154, 158, 161, 164, 167, 171, 174, 177, 181,
+    184, 187, 191, 194, 198, 201, 205, 209, 212, 216, 220, 223,
+    227, 231, 235, 239, 243, 247, 251, 255
+};
+#elif VELOCITY_CURVE == VEL_CURVE_POWER06
+const __code uint8_t AdsrCurveTable[128] = {  /* level = (x/127)^0.6 * 255 */
+      0,  13,  21,  26,  32,  36,  40,  44,  48,  52,  55,  58,
+     61,  64,  67,  70,  73,  76,  78,  81,  84,  86,  89,  91,
+     93,  96,  98, 100, 102, 105, 107, 109, 111, 113, 115, 117,
+    119, 121, 123, 125, 127, 129, 131, 133, 134, 136, 138, 140,
+    142, 144, 145, 147, 149, 150, 152, 154, 156, 157, 159, 160,
+    162, 164, 165, 167, 169, 170, 172, 173, 175, 176, 178, 179,
+    181, 182, 184, 185, 187, 188, 190, 191, 193, 194, 196, 197,
+    198, 200, 201, 203, 204, 206, 207, 208, 210, 211, 212, 214,
+    215, 216, 218, 219, 220, 222, 223, 224, 226, 227, 228, 230,
+    231, 232, 233, 235, 236, 237, 239, 240, 241, 242, 243, 245,
+    246, 247, 248, 250, 251, 252, 253, 255
+};
+#else
+const __code uint8_t AdsrCurveTable[128] = {  /* level = 10^((x/127-1)*1.0) * 255  (-20dB) */
+      0,  26,  26,  26,  27,  27,  28,  28,  29,  29,  30,  31,
+     31,  32,  32,  33,  33,  34,  35,  35,  36,  37,  37,  38,
+     39,  39,  40,  41,  42,  42,  43,  44,  45,  46,  46,  47,
+     48,  49,  50,  51,  52,  53,  54,  55,  56,  57,  58,  59,
+     60,  61,  62,  63,  64,  65,  67,  68,  69,  70,  72,  73,
+     74,  76,  77,  78,  80,  81,  83,  84,  86,  87,  89,  91,
+     92,  94,  96,  98,  99, 101, 103, 105, 107, 109, 111, 113,
+    115, 117, 119, 121, 123, 126, 128, 130, 133, 135, 138, 140,
+    143, 145, 148, 151, 153, 156, 159, 162, 165, 168, 171, 174,
+    177, 181, 184, 187, 191, 194, 198, 201, 205, 209, 213, 217,
+    221, 225, 229, 233, 237, 242, 246, 255
+};
+#endif
 
 #ifdef RUN_TEST
 Synthesizer synthForC;
@@ -18,10 +63,12 @@ void SynthInit(Synthesizer *synth)
 		soundUnionList[i].combine.wavetablePos_frac = 0;
 		soundUnionList[i].combine.wavetablePos_int = 0;
 		soundUnionList[i].combine.envelopeLevel = 0;
-		soundUnionList[i].combine.envelopePos = 255;
 		soundUnionList[i].combine.val = 0;
 		voiceState[i].midiNote = 0;
 		voiceState[i].velocity = 0;
+		voiceState[i].envelopeState = ENV_STATE_SILENT;
+		voiceState[i].envelopePhase = 0;
+		voiceState[i].reserved = 0;
 	}
 	synth->lastSoundUnit = 0;
 	synth->mixOut = 0;
@@ -31,6 +78,194 @@ void SynthDitherInit(Synthesizer *synth, uint16_t seed)
 {
 	synth->lfsr = seed ? seed : 0xACE1;
 }
+
+static uint32_t nextTickMs;
+
+void SynthEnvelopeTick(void)
+{
+	uint32_t now = GetSysMs();
+	while ((int32_t)(now - nextTickMs) >= 0)
+	{
+		GenDecayEnvlopeAsm();
+		nextTickMs += ADSR_TICK_MS;
+	}
+}
+
+void SynthEnvReset(void)
+{
+	nextTickMs = GetSysMs();
+}
+
+void SynthReleaseAllAsm(void)
+{
+	uint8_t i;
+	for (i = 0; i < POLY_NUM; i++)
+	{
+		synthForAsm.SoundUnitUnionList[i].split.envelopeLevel = 0;
+		voiceState[i].envelopeState = ENV_STATE_SILENT;
+	}
+}
+
+static uint8_t alloc_stamp;
+
+static uint8_t stealOldest(void)
+{
+	uint8_t i, oldest;
+
+	for (oldest = 0; oldest < POLY_NUM; oldest++)
+	{
+		if (voiceState[oldest].envelopeState != ENV_STATE_SILENT)
+			break;
+	}
+
+	for (i = oldest + 1; i < POLY_NUM; i++)
+	{
+		if (voiceState[i].envelopeState == ENV_STATE_SILENT)
+			continue;
+		if ((uint8_t)(voiceState[i].reserved - voiceState[oldest].reserved) >= 128)
+			oldest = i;
+	}
+	return oldest;
+}
+
+void NoteOnAsm(uint8_t note, uint8_t velocity)
+{
+	uint8_t idx;
+	uint8_t vel_scaled;
+	uint16_t inc;
+
+	vel_scaled = (uint8_t)(velocity * 2);
+
+	idx = 0;
+	while (idx < POLY_NUM && voiceState[idx].envelopeState != ENV_STATE_SILENT)
+		idx++;
+
+	if (idx >= POLY_NUM)
+		idx = stealOldest();
+
+	alloc_stamp++;
+	if (alloc_stamp == 0)
+		alloc_stamp = 1;
+
+	EA = 0;
+
+	inc = WaveTable_Increment[note & 0x7F];
+	synthForAsm.SoundUnitUnionList[idx].split.increment_frac = (uint8_t)(inc);
+	synthForAsm.SoundUnitUnionList[idx].split.increment_int = (uint8_t)(inc >> 8);
+	synthForAsm.SoundUnitUnionList[idx].split.wavetablePos_frac = 0;
+	synthForAsm.SoundUnitUnionList[idx].split.wavetablePos_int = 0;
+	synthForAsm.SoundUnitUnionList[idx].split.envelopeLevel = 0;
+
+	voiceState[idx].midiNote = note;
+	voiceState[idx].velocity = vel_scaled;
+	voiceState[idx].envelopeState = ENV_STATE_ATTACK;
+	voiceState[idx].envelopePhase = 0;
+	voiceState[idx].reserved = alloc_stamp;
+
+	EA = 1;
+}
+
+void NoteOffAsm(uint8_t note)
+{
+	uint8_t i;
+	for (i = 0; i < POLY_NUM; i++)
+	{
+		if (voiceState[i].envelopeState == ENV_STATE_SILENT)
+			continue;
+		if (voiceState[i].midiNote != note)
+			continue;
+		if (voiceState[i].envelopePhase == 0)
+			voiceState[i].envelopePhase = (uint8_t)(ADSR_ENV_MAX >> 1);
+		voiceState[i].envelopeState = ENV_STATE_RELEASE;
+	}
+}
+
+void GenDecayEnvlopeAsm(void)
+{
+	uint8_t i;
+	for (i = 0; i < POLY_NUM; i++)
+	{
+		uint8_t state = voiceState[i].envelopeState;
+		if (state == ENV_STATE_SILENT)
+			continue;
+
+		uint8_t env = voiceState[i].envelopePhase;
+		uint8_t vel = voiceState[i].velocity;
+		uint8_t newState = state;
+		uint8_t newEnv = env;
+
+		if (state == ENV_STATE_ATTACK)
+		{
+			uint16_t v = (uint16_t)env + ADSR_ATTACK_RATE;
+			if (v >= ADSR_ENV_MAX)
+			{
+				newEnv = ADSR_ENV_MAX;
+				newState = ENV_STATE_DECAY;
+			}
+			else
+			{
+				newEnv = (uint8_t)v;
+			}
+		}
+		else if (state == ENV_STATE_DECAY)
+		{
+			int16_t v = (int16_t)env - ADSR_DECAY_RATE;
+			if (v <= ADSR_SUSTAIN_THRESHOLD)
+			{
+				newEnv = ADSR_SUSTAIN_THRESHOLD;
+				newState = ENV_STATE_SUSTAIN;
+			}
+			else
+			{
+				newEnv = (uint8_t)v;
+			}
+		}
+		else if (state == ENV_STATE_SUSTAIN)
+		{
+#if ADSR_SUSTAIN_DECAY_RATE > 0
+			int16_t v = (int16_t)env - ADSR_SUSTAIN_DECAY_RATE;
+			if (v <= 0)
+			{
+				newEnv = 0;
+				newState = ENV_STATE_SILENT;
+			}
+			else
+			{
+				newEnv = (uint8_t)v;
+			}
+#endif
+		}
+		else if (state == ENV_STATE_RELEASE)
+		{
+			int16_t v = (int16_t)env - ADSR_RELEASE_RATE;
+			if (v <= 0)
+			{
+				newEnv = 0;
+				newState = ENV_STATE_SILENT;
+			}
+			else
+			{
+				newEnv = (uint8_t)v;
+			}
+		}
+
+		voiceState[i].envelopeState = newState;
+		voiceState[i].envelopePhase = newEnv;
+
+		if (newState == ENV_STATE_SILENT || newEnv == 0)
+		{
+			synthForAsm.SoundUnitUnionList[i].split.envelopeLevel = 0;
+			if (newEnv == 0)
+				voiceState[i].envelopeState = ENV_STATE_SILENT;
+		}
+		else
+		{
+			uint8_t curve_idx = (uint8_t)(((uint16_t)newEnv * vel) >> 8);
+			synthForAsm.SoundUnitUnionList[i].split.envelopeLevel = AdsrCurveTable[curve_idx];
+		}
+	}
+}
+
 #ifdef RUN_TEST
 static uint8_t selectVoice(Synthesizer *synth)
 {
@@ -46,16 +281,15 @@ void NoteOnAsmP(uint8_t note)
 {
 	uint8_t idx = selectVoice(&synthForAsm);
 
-	// disable_interrupts();
 	synthForAsm.SoundUnitUnionList[idx].combine.increment = WaveTable_Increment[note & 0x7F];
 	synthForAsm.SoundUnitUnionList[idx].combine.wavetablePos_frac = 0;
 	synthForAsm.SoundUnitUnionList[idx].combine.wavetablePos_int = 0;
-	synthForAsm.SoundUnitUnionList[idx].combine.envelopePos = 255;
-	synthForAsm.SoundUnitUnionList[idx].combine.envelopeLevel = 255;
-	// enable_interrupts();
+	synthForAsm.SoundUnitUnionList[idx].combine.envelopeLevel = 0;
 
 	voiceState[idx].midiNote = note;
-	voiceState[idx].velocity = 255;
+	voiceState[idx].velocity = (uint8_t)(127 * 2);
+	voiceState[idx].envelopeState = ENV_STATE_ATTACK;
+	voiceState[idx].envelopePhase = 0;
 
 	idx++;
 	if (idx == POLY_NUM)
@@ -65,17 +299,91 @@ void NoteOnAsmP(uint8_t note)
 
 void GenDecayEnvlopeAsmP(void)
 {
-	__data SoundUnitUnion *soundUnionList = &(synthForAsm.SoundUnitUnionList[0]);
 	for (uint8_t i = 0; i < POLY_NUM; i++)
 	{
-		if (soundUnionList[i].split.envelopePos < (sizeof(EnvelopeTable) - 1))
+		uint8_t state = voiceState[i].envelopeState;
+		if (state == ENV_STATE_SILENT)
+			continue;
+
+		uint8_t env = voiceState[i].envelopePhase;
+		uint8_t vel  = voiceState[i].velocity;
+		uint8_t newState = state;
+		uint8_t newEnv = env;
+
+		if (state == ENV_STATE_ATTACK)
 		{
-			uint8_t p = soundUnionList[i].split.envelopePos;
-			soundUnionList[i].split.envelopeLevel = (uint8_t)(((uint16_t)EnvelopeTable[p] * voiceState[i].velocity) >> 8);
-			uint16_t newPos = (uint16_t)p + 6;
-			if (newPos >= 255)
-				newPos = 255;
-			soundUnionList[i].split.envelopePos = (uint8_t)newPos;
+			uint16_t v = (uint16_t)env + ADSR_ATTACK_RATE;
+			if (v >= ADSR_ENV_MAX)
+			{
+				newEnv = ADSR_ENV_MAX;
+				newState = ENV_STATE_DECAY;
+			}
+			else
+			{
+				newEnv = (uint8_t)v;
+			}
+		}
+		else if (state == ENV_STATE_DECAY)
+		{
+			int16_t v = (int16_t)env - ADSR_DECAY_RATE;
+			if (v <= ADSR_SUSTAIN_THRESHOLD)
+			{
+				newEnv = ADSR_SUSTAIN_THRESHOLD;
+				newState = ENV_STATE_SUSTAIN;
+			}
+			else
+			{
+				newEnv = (uint8_t)v;
+			}
+		}
+		else if (state == ENV_STATE_SUSTAIN)
+		{
+#if ADSR_SUSTAIN_DECAY_RATE > 0
+			int16_t v = (int16_t)env - ADSR_SUSTAIN_DECAY_RATE;
+			if (v <= 0)
+			{
+				newEnv = 0;
+				newState = ENV_STATE_SILENT;
+			}
+			else
+			{
+				newEnv = (uint8_t)v;
+			}
+#endif
+		}
+		else if (state == ENV_STATE_RELEASE)
+		{
+			int16_t v = (int16_t)env - ADSR_RELEASE_RATE;
+			if (v <= 0)
+			{
+				newEnv = 0;
+				newState = ENV_STATE_SILENT;
+			}
+			else
+			{
+				newEnv = (uint8_t)v;
+			}
+		}
+
+		voiceState[i].envelopeState = newState;
+		voiceState[i].envelopePhase = newEnv;
+
+		if (newState == ENV_STATE_SILENT)
+		{
+			synthForAsm.SoundUnitUnionList[i].split.envelopeLevel = 0;
+		}
+		else
+		{
+			if (newEnv == 0)
+			{
+				synthForAsm.SoundUnitUnionList[i].split.envelopeLevel = 0;
+				voiceState[i].envelopeState = ENV_STATE_SILENT;
+			}
+			else
+			{
+				uint8_t idx = (uint8_t)(((uint16_t)newEnv * vel) >> 8);
+				synthForAsm.SoundUnitUnionList[i].split.envelopeLevel = AdsrCurveTable[idx];
+			}
 		}
 	}
 }
@@ -84,13 +392,12 @@ void NoteOffAsmP(uint8_t note)
 {
 	for (uint8_t i = 0; i < POLY_NUM; i++)
 	{
-		if (synthForAsm.SoundUnitUnionList[i].combine.envelopeLevel > 0 &&
+		if (synthForAsm.SoundUnitUnionList[i].split.envelopeLevel > 0 &&
 			voiceState[i].midiNote == note)
 		{
-			uint8_t p = 0;
-			while (p < 255 && EnvelopeTable[p] >= synthForAsm.SoundUnitUnionList[i].combine.envelopeLevel)
-				p += 6;
-			synthForAsm.SoundUnitUnionList[i].combine.envelopePos = p;
+			if (voiceState[i].envelopePhase == 0)
+				voiceState[i].envelopePhase = ADSR_ENV_MAX >> 1;
+			voiceState[i].envelopeState = ENV_STATE_RELEASE;
 		}
 	}
 }
@@ -99,13 +406,10 @@ void NoteOnC(uint8_t note)
 {
 	uint8_t idx = selectVoice(&synthForC);
 
-	// disable_interrupts();
 	synthForC.SoundUnitUnionList[idx].combine.increment = WaveTable_Increment[note & 0x7F];
 	synthForC.SoundUnitUnionList[idx].combine.wavetablePos_frac = 0;
 	synthForC.SoundUnitUnionList[idx].combine.wavetablePos_int = 0;
-	synthForC.SoundUnitUnionList[idx].combine.envelopePos = 255;
-	synthForC.SoundUnitUnionList[idx].combine.envelopeLevel = 255;
-	// enable_interrupts();
+	synthForC.SoundUnitUnionList[idx].combine.envelopeLevel = 0;
 
 	idx++;
 	if (idx == POLY_NUM)
@@ -117,13 +421,9 @@ void NoteOffC(uint8_t note)
 {
 	for (uint8_t i = 0; i < POLY_NUM; i++)
 	{
-		if (synthForC.SoundUnitUnionList[i].combine.envelopeLevel > 0 &&
-			voiceState[i].midiNote == note)
+		if (synthForC.SoundUnitUnionList[i].combine.envelopeLevel > 0)
 		{
-			uint8_t p = 0;
-			while (p < 255 && EnvelopeTable[p] >= synthForC.SoundUnitUnionList[i].combine.envelopeLevel)
-				p += 6;
-			synthForC.SoundUnitUnionList[i].combine.envelopePos = p;
+			synthForC.SoundUnitUnionList[i].combine.envelopeLevel = 0;
 		}
 	}
 }
@@ -154,17 +454,56 @@ void SynthC(void)
 
 void GenDecayEnvlopeC(void)
 {
-	__xdata SoundUnitUnion *soundUnionList = &(synthForC.SoundUnitUnionList[0]);
 	for (uint8_t i = 0; i < POLY_NUM; i++)
 	{
-		if (soundUnionList[i].split.envelopePos < (sizeof(EnvelopeTable) - 1))
+		uint8_t state = voiceState[i].envelopeState;
+		if (state == ENV_STATE_SILENT)
+			continue;
+
+		uint8_t env = voiceState[i].envelopePhase;
+		uint8_t vel  = voiceState[i].velocity;
+		uint8_t newState = state;
+		uint8_t newEnv = env;
+
+		if (state == ENV_STATE_ATTACK)
 		{
-			uint8_t p = soundUnionList[i].split.envelopePos;
-			soundUnionList[i].split.envelopeLevel = (uint8_t)(((uint16_t)EnvelopeTable[p] * voiceState[i].velocity) >> 8);
-			uint16_t newPos = (uint16_t)p + 6;
-			if (newPos >= 255)
-				newPos = 255;
-			soundUnionList[i].split.envelopePos = (uint8_t)newPos;
+			uint16_t v = (uint16_t)env + ADSR_ATTACK_RATE;
+			if (v >= ADSR_ENV_MAX) { newEnv = ADSR_ENV_MAX; newState = ENV_STATE_DECAY; }
+			else { newEnv = (uint8_t)v; }
+		}
+		else if (state == ENV_STATE_DECAY)
+		{
+			int16_t v = (int16_t)env - ADSR_DECAY_RATE;
+			if (v <= ADSR_SUSTAIN_THRESHOLD) { newEnv = ADSR_SUSTAIN_THRESHOLD; newState = ENV_STATE_SUSTAIN; }
+			else { newEnv = (uint8_t)v; }
+		}
+		else if (state == ENV_STATE_SUSTAIN)
+		{
+#if ADSR_SUSTAIN_DECAY_RATE > 0
+			int16_t v = (int16_t)env - ADSR_SUSTAIN_DECAY_RATE;
+			if (v <= 0) { newEnv = 0; newState = ENV_STATE_SILENT; }
+			else { newEnv = (uint8_t)v; }
+#endif
+		}
+		else if (state == ENV_STATE_RELEASE)
+		{
+			int16_t v = (int16_t)env - ADSR_RELEASE_RATE;
+			if (v <= 0) { newEnv = 0; newState = ENV_STATE_SILENT; }
+			else { newEnv = (uint8_t)v; }
+		}
+
+		voiceState[i].envelopeState = newState;
+		voiceState[i].envelopePhase = newEnv;
+
+		if (newState == ENV_STATE_SILENT || newEnv == 0)
+		{
+			synthForC.SoundUnitUnionList[i].split.envelopeLevel = 0;
+			if (newEnv == 0) voiceState[i].envelopeState = ENV_STATE_SILENT;
+		}
+		else
+		{
+			uint8_t idx = (uint8_t)(((uint16_t)newEnv * vel) >> 8);
+			synthForC.SoundUnitUnionList[i].split.envelopeLevel = AdsrCurveTable[idx];
 		}
 	}
 }

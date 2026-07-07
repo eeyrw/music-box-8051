@@ -150,10 +150,10 @@ mixOut 为 16-bit 有符号值。
 #### CMD_VOICE_DUMP (0x07) — 合成器 8 声道完整快照
 
 - 负载: 无
-- 应答: 88 字节，每个 voice 11 字节，共计 8 个 voice
+- 应答: 96 字节，每个 voice 12 字节，共计 8 个 voice
 
 ```
-Per-Voice (11 bytes):
+Per-Voice (12 bytes):
 Offset | Size | 字段
    0   |  1   | increment_frac      (相位增量低字节)
    1   |  1   | increment_int       (相位增量高字节)
@@ -161,22 +161,23 @@ Offset | Size | 字段
    3   |  1   | wavetablePos_int (L) (波表位置低字节)
    4   |  1   | wavetablePos_int (H) (波表位置高字节)
    5   |  1   | envelopeLevel       (包络电平, 0=静音)
-   6   |  1   | envelopePos         (包络位置, 255=sustain, <255=衰减中)
-   7   |  1   | val (L)             (输出值低字节)
-   8   |  1   | val (H)             (输出值高字节, 有符号16位)
-   9   |  1   | sampleVal           (当前采样值)
-  10   |  1   | midiNote            (MIDI 音符编号, NoteOff 查找用)
+   6   |  1   | val (L)             (输出值低字节)
+   7   |  1   | val (H)             (输出值高字节, 有符号16位)
+   8   |  1   | sampleVal           (当前采样值)
+   9   |  1   | midiNote            (MIDI 音符编号, NoteOff 查找用)
+  10   |  1   | velocity            (力度缩放值, MIDI_vel × 2, 0-254)
+  11   |  1   | envelopeState       (包络状态: 0=SILENT, 1=ATTACK, 2=DECAY, 3=SUSTAIN, 4=RELEASE)
 ```
 
-Voice 0 位于 data[0..10]，Voice 1 位于 data[11..21]，以此类推。
+Voice 0 位于 data[0..11]，Voice 1 位于 data[12..23]，以此类推。
 
 ---
 
 #### CMD_NOTE_ON (0x09) — 触发音符
 
-- 负载: 1 字节 — MIDI 音符编号 (0–127)
+- 负载: 1 字节 MIDI 音符编号 (0–127), 可选第 2 字节 velocity (0–127, 默认 127)
 - 应答: 状态码
-- 行为: 调用 `NoteOnAsm(note)`，分配空闲声道并开始 sustain
+- 行为: 调用 `NoteOnAsm(note, vel)`，分配空闲声道并进入 ADSR ATTACK 阶段 (env 从 0 渐起)。velocity 用于 `env × vel << 1` 缩放后查非线表。
 
 ---
 
@@ -184,7 +185,7 @@ Voice 0 位于 data[0..10]，Voice 1 位于 data[11..21]，以此类推。
 
 - 负载: 1 字节 — MIDI 音符编号 (0–127)
 - 应答: 状态码
-- 行为: 调用 `NoteOffAsm(note)`，扫描所有声道匹配 `midiNote`，将 `envelopePos` 置 0 触发衰减。释放所有匹配声道（处理同音复触）。
+- 行为: 调用 `NoteOffAsm(note)`，扫描所有声道匹配 `midiNote`，将 `envelopeState` 置 RELEASE 触发线性衰减。释放所有匹配声道（处理同音复触）。
 
 ---
 
@@ -258,6 +259,36 @@ Offset | Size | 内容
    1   |  1   | Total song count
    2   |  1   | Playing flag (1=playing, 0=stopped)
 ```
+
+---
+
+---
+
+#### CMD_ADSR_GET (0x30) — 读取 ADSR 包络参数
+
+- 负载: 无
+- 应答: 7 字节
+
+```
+Offset | Size | 内容
+   0   |  1   | ADSR_ENV_MAX (内部 env 范围, 128)
+   1   |  1   | ADSR_TICK_MS (包络更新间隔, 5ms)
+   2   |  1   | ADSR_ATTACK_RATE (Attack 步进值)
+   3   |  1   | ADSR_DECAY_RATE  (Decay 步进值)
+   4   |  1   | ADSR_SUSTAIN_THRESHOLD (Sustain 起始阈值)
+   5   |  1   | ADSR_SUSTAIN_DECAY_RATE (Sustain 衰减率, 0=平坦)
+   6   |  1   | ADSR_RELEASE_RATE (Release 步进值)
+```
+
+实际阶段时长可由 `ceil(幅度/步进) × TICK_MS` 计算。
+编译时的目标时长通过 `SynthCore.h` 的 `ADSR_ATTACK_MS` / `ADSR_DECAY_MS` / `ADSR_RELEASE_MS` 宏控制。
+
+---
+
+#### CMD_ADSR_SET (0x31) — 写入 ADSR 参数 (保留)
+
+- 负载: 7 字节 (格式同 ADSR_GET)
+- 应答: STATUS_NOT_SUPPORTED (当前 ADSR 参数为编译时常量，暂不支持运行时修改)
 
 ---
 
@@ -346,10 +377,11 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 <command> [args...]
 | `mem` | — | 栈指针和剩余栈空间 |
 | `audio` | — | mixOut/活跃 voice 数 |
 | `adc` | `<CH>` | 读 ADC 通道 CH (0–15) |
-| `voice` | — | 8 声道合成器状态 dump (含 midiNote) |
+| `voice` | — | 8 声道合成器状态 dump (含 midiNote/velocity/state) |
 | `sysinfo` | — | 综合系统状态 (含 uptime/audio/song) |
-| `note-on` | `<NOTE>` | 触发 NoteOn (0–127) |
-| `note-off` | `<NOTE>` | 触发 NoteOff 释放 (0–127) |
+| `note-on` | `<NOTE> [VEL]` | 触发 NoteOn ATTACK (0–127, 可选力度 0–127) |
+| `note-off` | `<NOTE>` | 触发 NoteOff RELEASE (0–127) |
+| `adsr-get` | — | ADSR 包络参数 (步进值 + 范围) |
 | `play` | — | 开始播放 |
 | `stop` | — | 停止播放 |
 | `prev` | — | 上一曲 |
@@ -378,9 +410,11 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 next
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 song 3
 
 # 合成器测试
-python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-on 60   # 触发 C5
-python3 tools/musicbox_proto.py --port /dev/ttyUSB0 voice         # 查看声道
-python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-off 60  # 释放 C5
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-on 60       # 触发 C5 (默认 vel=127)
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-on 60 80    # 触发 C5 (vel=80)
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 voice            # 查看声道
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-off 60      # 释放 C5
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 adsr-get         # ADSR 参数
 
 # SPI Flash 操作
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 flash-info

@@ -102,7 +102,7 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 1. **Wavetable**: Configurable 8-bit signed PCM sample at 32 kHz (current: Square Wave C4, 5,428 samples, 5,306-sample attack + 121-sample loop). `WaveTable.h`/`.inc` define dimensions.
 2. **Phase accumulator**: 16.8 fixed-point per voice, indexed by MIDI note number through a precomputed `WaveTable_Increment` table
 3. **Linear interpolation**: Between adjacent samples using the 8-bit fractional phase component
-4. **Envelope**: Sustain-release model. Notes hold indefinitely at full volume (envelopePos=255). NoteOff sets envelopePos=0, triggering 256-entry decay table advancing at `RELEASE_STEP=3` every 3ms (~256ms release). Stop/EndOfScore release all voices instantly.
+4. **Envelope**: Full ADSR model. Attack (0→128, ramp +22/tick), Decay (128→100, ramp −3/tick), Sustain (hold at 100), Release (linear decay to 0, ramp −1/tick). Raw envelope (0-128) × velocity (0-254) → index into 128-entry non-linear response curve → final envelopeLevel (0-255). Tick interval `ADSR_TICK_MS=5ms`, phase-locked to system timer. Durations: Attack ~30ms, Decay ~50ms, Release ~500ms (configurable via `SynthCore.h` macros).
 5. **Mixing**: 8 voices summed into a 16-bit accumulator, then `>>=1`, clipped to [-128, 127], and DC-shifted by +128 for unsigned 8-bit PWM
 6. **Dithering**: Galois 16-bit LFSR adds ±1 LSB triangular dither before PWM output, converting quantization noise to white noise floor. Toggle via `USE_DITHERING` macro in `SynthCore.inc`.
 
@@ -111,12 +111,12 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 - Timer0 ISR at 32000 Hz, `sysMs` incremented every 32 ticks (1ms)
 - `GetSysMs()` returns 32-bit millisecond uptime, used for all timing
 - Score events: `nextEventMs += delta × 8` (TickPerSecond=125 → 8ms per tick)
-- Envelope decay: every 3ms, advancing by `RELEASE_STEP=3` (~256ms release)
+- Envelope tick: every `ADSR_TICK_MS` (5ms), phase-locked via `nextTickMs` accumulator (immune to main-loop jitter)
 - SPI flash operations use `GetSysMs()` for accurate busy-wait timeouts
 
 ### Voice allocation
 
-Round-robin across 8 voices with interrupt-safe state updates. Note-on sets phase to 0, envelopePos to 255 (sustain), and stores `midiNote` for NoteOff lookup. NoteOff sets envelopePos to 0, triggering decay. Stop/EndOfScore calls `SynthReleaseAllAsm` which zeroes all envelopes.
+**Free-voice-first + Timestamp FIFO steal** across 8 voices. NoteOn scans for `voiceState[].envelopeState == SILENT` (XRAM), reuses immediately. If all 8 busy, `stealOldest()` compares `voiceState[].reserved` allocation timestamps (circular uint8_t) to find and replace the earliest-allocated note. Voice writes are inside `EA=0`/`EA=1` critical section to prevent ISR data races. NoteOff sets `envelopeState = RELEASE` for all matching voices; if `envelopePhase == 0` (before first envelope tick), pre-charges to `ADSR_ENV_MAX/2` to prevent silent staccato notes. Stop/EndOfScore calls `SynthReleaseAllAsm` which zeroes all envelopes and sets state=SILENT.
 
 ### Score format — SSPL + SSCR
 
@@ -201,21 +201,21 @@ The test feeds 9 notes, runs 10,000 iterations, and compares every voice field b
 ├── Synthesizer/                     Audio synthesis engine
 │   ├── Synth.inc                    SynthAsm — 8-voice synthesis core (ISR hot path, inc. dithering)
 │   ├── SynthCore.inc                Struct offsets + memory layout constants
-│   ├── SynthCoreAsm.s               NoteOnAsm + NoteOffAsm + GenDecayEnvlopeAsm + SynthReleaseAllAsm
-│   ├── SynthCore.c                  C synthesis reference (test only)
-│   ├── SynthCore.h                  SoundUnit/Synthesizer struct definitions
+│   ├── SynthCoreAsm.s               _synthForAsm data segment (0x21)
+│   ├── SynthCore.c                  Synthesizer init + NoteOn/Off/Decay/ReleaseAll (C ADSR)
+│   ├── SynthCore.h                  SoundUnit/Synthesizer/VoiceState struct definitions
 │   ├── UpdateTick.inc               sysMs millisecond counter (ISR)
 │   ├── PeriodTimer.s                Timer0 ISR entry (bank switch)
 │   ├── PeriodTimer.h                sysMs extern declarations
-│   ├── WaveTable.c                  Wavetable data + pitch increments
-│   ├── WaveTable.h / WaveTable.inc  Wavetable dimensions + constants
-│   ├── EnvelopTable.c               Decay envelope lookup table (256 entries)
-│   ├── EnvelopeTable.h              Envelope table declaration
+│   ├── WaveTable.{c,h}              Wavetable data + pitch increments
+│   ├── WaveTable.inc                Wavetable dimensions + constants (ASM)
+│   ├── EnvelopTable.{c,h}           256-entry non-linear velocity response curve
 │   ├── AlgorithmTest.c              C-vs-ASM verification suite (RUN_TEST only)
 │   └── 8051.inc                     SFR address constants
 │
 ├── tools/
 │   ├── musicbox_proto.py            Full serial protocol CLI client
+│   ├── adsr_test.py                 ADSR envelope test suite
 │   └── boot.py                      Send soft-reset frame for make flash
 ```
 

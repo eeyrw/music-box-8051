@@ -69,13 +69,6 @@ void PrintParameters(Synthesizer *synth)
     }
     printf("\n");
 
-    printf("%16s", "Chn EnvlPos");
-    for (uint8_t k = 0; k < POLY_NUM; k++)
-    {
-        printf("%6d ", soundUnionList[k].combine.envelopePos);
-    }
-    printf("\n");
-
     printf("%16s", "Chn NoteIncrInt");
     for (uint8_t k = 0; k < POLY_NUM; k++)
     {
@@ -141,15 +134,6 @@ uint8_t SynthParamterCompare(Synthesizer *synthA, Synthesizer *synthB)
         if (sa[k].combine.envelopeLevel != sb[k].combine.envelopeLevel)
         {
             printf("SND ID:%d  Wrong envelopeLevel\n", k);
-            error++;
-            printf("SND ID:%d   C: ", k);
-            PrintMem((__xdata uint8_t *)&sa[k], sizeof(SoundUnitUnion));
-            printf("SND ID:%d ASM: ", k);
-            PrintMem((uint8_t *)&sb[k], sizeof(SoundUnitUnion));
-        }
-        if (sa[k].combine.envelopePos != sb[k].combine.envelopePos)
-        {
-            printf("SND ID:%d  Wrong envelopePos\n", k);
             error++;
             printf("SND ID:%d   C: ", k);
             PrintMem((__xdata uint8_t *)&sa[k], sizeof(SoundUnitUnion));

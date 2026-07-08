@@ -6,17 +6,17 @@
 #define POLY_NUM 8
 
 // ================================================================
-// ADSR 包络参数 — 修改下面三个时长即可
+// ADSR 包络默认参数 — 修改下面四个时长即可
 //   实际时长 ≈ ceil(幅度/步进) × ADSR_TICK_MS
 //   ADSR_TICK_MS 在 Player.c 中控制 GenDecayEnvlopeAsm 调用频率
-//   ADSR_*_MS 无上限 (仅用于编译期推导步进, 不占 RAM 也不走串口)
+//   ADSR_*_MS 用于启动时初始化 8.8 定点速率；串口 ADSR_SET 可临时覆盖
 // ================================================================
 
 #define ADSR_TICK_MS              5
-#define ADSR_ATTACK_MS           20
-#define ADSR_DECAY_MS            60
-#define ADSR_RELEASE_MS         200
-#define ADSR_SUSTAIN_DECAY_MS    5000
+#define ADSR_ATTACK_MS           10
+#define ADSR_DECAY_MS            30
+#define ADSR_RELEASE_MS         300
+#define ADSR_SUSTAIN_DECAY_MS    2000
 
 #define ADSR_ENV_MAX            128
 #define ADSR_SUSTAIN_THRESHOLD  100
@@ -29,6 +29,7 @@ extern __xdata uint16_t AdsrReleaseRateFrac;
 extern __xdata uint16_t AdsrSustainDecayRateFrac;
 
 void AdsrInit(void);
+void AdsrSetRates(uint16_t attack, uint16_t decay, uint16_t sustainDecay, uint16_t release);
 
 // ---- ADSR 包络状态 ----
 #define ENV_STATE_SILENT  0
@@ -44,7 +45,7 @@ void AdsrInit(void);
 #define VOICE_STEAL_HIGHEST_NOTE 3   // MIDI note: steal highest pitch (less perceptually missed)
 #define VOICE_STEAL_LOWEST_NOTE  4   // MIDI note: steal lowest pitch
 
-#define NOTEON_STEAL_STRATEGY VOICE_STEAL_QUIETEST
+#define NOTEON_STEAL_STRATEGY VOICE_STEAL_OLDEST
 
 // ---- 力度曲线选择 ----
 #define VEL_CURVE_POWER2  0

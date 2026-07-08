@@ -180,6 +180,17 @@ static uint16_t read_u16_le(const uint8_t *p)
 	return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
+static uint16_t read_u16_be(const uint8_t *p)
+{
+	return ((uint16_t)p[0] << 8) | (uint16_t)p[1];
+}
+
+static void write_u16_be(uint8_t *p, uint16_t v)
+{
+	p[0] = (uint8_t)(v >> 8);
+	p[1] = (uint8_t)v;
+}
+
 static uint8_t flash_read_id_buf[3];
 
 static void cmd_flash_info(void)
@@ -531,20 +542,39 @@ static void dispatch_command(void)
 
 	case CMD_ADSR_GET:
 	{
-		uint8_t buf[7];
+		uint8_t buf[11];
 		buf[0] = ADSR_ENV_MAX;
 		buf[1] = ADSR_TICK_MS;
-		buf[2] = (uint8_t)(AdsrAttackRateFrac / ADSR_FRAC_DEN);
-		buf[3] = (uint8_t)(AdsrDecayRateFrac / ADSR_FRAC_DEN);
-		buf[4] = ADSR_SUSTAIN_THRESHOLD;
-		buf[5] = (uint8_t)(AdsrSustainDecayRateFrac);
-		buf[6] = (uint8_t)(AdsrReleaseRateFrac / ADSR_FRAC_DEN);
-		send_data_response(CMD_ADSR_GET, STATUS_OK, buf, 7);
+		write_u16_be(&buf[2], AdsrAttackRateFrac);
+		write_u16_be(&buf[4], AdsrDecayRateFrac);
+		buf[6] = ADSR_SUSTAIN_THRESHOLD;
+		write_u16_be(&buf[7], AdsrSustainDecayRateFrac);
+		write_u16_be(&buf[9], AdsrReleaseRateFrac);
+		send_data_response(CMD_ADSR_GET, STATUS_OK, buf, 11);
 		break;
 	}
 
 	case CMD_ADSR_SET:
-		send_response_err(CMD_ADSR_SET, STATUS_NOT_SUPPORTED);
+		if (pkt_len != 11)
+		{
+			send_response_err(CMD_ADSR_SET, STATUS_BAD_LEN);
+			break;
+		}
+		if (pkt_data[0] != ADSR_ENV_MAX || pkt_data[1] != ADSR_TICK_MS
+		    || pkt_data[6] != ADSR_SUSTAIN_THRESHOLD)
+		{
+			send_response_err(CMD_ADSR_SET, STATUS_INVALID_PARAM);
+			break;
+		}
+		if (read_u16_be(&pkt_data[2]) == 0 || read_u16_be(&pkt_data[4]) == 0
+		    || read_u16_be(&pkt_data[9]) == 0)
+		{
+			send_response_err(CMD_ADSR_SET, STATUS_INVALID_PARAM);
+			break;
+		}
+		AdsrSetRates(read_u16_be(&pkt_data[2]), read_u16_be(&pkt_data[4]),
+		             read_u16_be(&pkt_data[7]), read_u16_be(&pkt_data[9]));
+		send_response_ok(CMD_ADSR_SET);
 		break;
 
 	default:

@@ -31,6 +31,8 @@ Commands:
   flash-erase-all         Erase entire SPI flash chip
   flash-read <ADDR> <LEN> [OUTFILE]  Read LEN bytes from ADDR, stdout or file
   flash-write <ADDR> <INFILE>        Write file to ADDR
+  adsr-get                Get ADSR envelope parameters
+  adsr-set <A> <D> <S> <R> Set ADSR durations in ms (S=0 keeps sustain flat)
 """
 
 import sys
@@ -77,7 +79,7 @@ STATUS_BAD_LEN       = 0x03
 STATUS_FLASH_ERR     = 0x04
 STATUS_NOT_SUPPORTED = 0x05
 STATUS_INVALID_ADDR  = 0x06
-STATUS_BUSY          = 0x07
+STATUS_INVALID_PARAM = 0x07
 
 STATUS_NAMES = {
     0x00: "OK",
@@ -87,7 +89,7 @@ STATUS_NAMES = {
     0x04: "FLASH_ERR",
     0x05: "NOT_SUPPORTED",
     0x06: "INVALID_ADDR",
-    0x07: "BUSY",
+    0x07: "INVALID_PARAM",
 }
 
 
@@ -392,19 +394,51 @@ class MusicBoxClient:
 
     def adsr_get(self):
         data = self._do_cmd(CMD_ADSR_GET)
-        (env_max, tick_ms, attack_step, decay_step, sustain_thr,
-         sustain_decay, release_step) = struct.unpack("BBBBBBB", data)
-        att_dur = ((env_max + attack_step - 1) // attack_step) * tick_ms if attack_step else 0
+        (env_max, tick_ms, attack_rate, decay_rate, sustain_thr,
+         sustain_decay_rate, release_rate) = struct.unpack(">BBHHBHH", data)
+        attack_step = attack_rate / 256.0
+        decay_step = decay_rate / 256.0
+        sustain_decay_step = sustain_decay_rate / 256.0
+        release_step = release_rate / 256.0
+        att_dur = self._duration_ms(env_max, attack_rate, tick_ms)
         dec_delta = env_max - sustain_thr
-        dec_dur = ((dec_delta + decay_step - 1) // decay_step) * tick_ms if decay_step else 0
-        rel_dur = ((sustain_thr + release_step - 1) // release_step) * tick_ms if release_step else 0
+        dec_dur = self._duration_ms(dec_delta, decay_rate, tick_ms)
+        sus_dur = self._duration_ms(sustain_thr, sustain_decay_rate, tick_ms) if sustain_decay_rate else 0
+        rel_dur = self._duration_ms(env_max, release_rate, tick_ms)
         print(f"ADSR Parameters (tick={tick_ms}ms):")
         print(f"  ENV_MAX:        {env_max}")
-        print(f"  ATTACK:         step={attack_step:2d}  → {att_dur:3d}ms  (target ~{att_dur}ms)")
-        print(f"  DECAY:          step={decay_step:2d}  → {dec_dur:3d}ms  (delta={dec_delta}, to SUSTAIN_THR={sustain_thr})")
+        print(f"  ATTACK:         rate=0x{attack_rate:04X}  step={attack_step:.3f}/tick  -> {att_dur}ms")
+        print(f"  DECAY:          rate=0x{decay_rate:04X}  step={decay_step:.3f}/tick  -> {dec_dur}ms")
         print(f"  SUSTAIN_THR:    {sustain_thr}")
-        print(f"  SUSTAIN_DECAY:  {sustain_decay}  (0=flat)")
-        print(f"  RELEASE:        step={release_step:2d}  → {rel_dur:3d}ms  (linear, from SUSTAIN_THR)")
+        print(f"  SUSTAIN_DECAY:  rate=0x{sustain_decay_rate:04X}  step={sustain_decay_step:.3f}/tick  -> {sus_dur}ms (0=flat)")
+        print(f"  RELEASE:        rate=0x{release_rate:04X}  step={release_step:.3f}/tick  -> {rel_dur}ms")
+
+    @staticmethod
+    def _rate_frac(delta, duration_ms, tick_ms):
+        if duration_ms <= 0:
+            return 0
+        return min(0xFFFF, max(1, (delta * tick_ms * 256 + duration_ms - 1) // duration_ms))
+
+    @staticmethod
+    def _duration_ms(delta, rate_frac, tick_ms):
+        if rate_frac == 0:
+            return 0
+        ticks = (delta * 256 + rate_frac - 1) // rate_frac
+        return ticks * tick_ms
+
+    def adsr_set(self, attack_ms, decay_ms, sustain_decay_ms, release_ms):
+        if attack_ms <= 0 or decay_ms <= 0 or release_ms <= 0 or sustain_decay_ms < 0:
+            raise SystemExit("attack/decay/release must be > 0 ms; sustain_decay must be >= 0 ms")
+        cur = self._do_cmd(CMD_ADSR_GET)
+        env_max, tick_ms, _attack, _decay, sustain_thr, _sustain_decay, _release = struct.unpack(">BBHHBHH", cur)
+        attack_rate = self._rate_frac(env_max, attack_ms, tick_ms)
+        decay_rate = self._rate_frac(env_max - sustain_thr, decay_ms, tick_ms)
+        sustain_decay_rate = self._rate_frac(sustain_thr, sustain_decay_ms, tick_ms) if sustain_decay_ms else 0
+        release_rate = self._rate_frac(env_max, release_ms, tick_ms)
+        payload = struct.pack(">BBHHBHH", env_max, tick_ms, attack_rate, decay_rate,
+                              sustain_thr, sustain_decay_rate, release_rate)
+        self._do_cmd(CMD_ADSR_SET, payload)
+        print("ADSR parameters updated")
 
     def close(self):
         self.ser.close()
@@ -500,6 +534,11 @@ def main():
             client.flash_write(addr, args.args[1])
         elif cmd == "adsr-get":
             client.adsr_get()
+        elif cmd == "adsr-set":
+            if len(args.args) < 4:
+                sys.exit("adsr-set requires ATTACK_MS DECAY_MS SUSTAIN_DECAY_MS RELEASE_MS")
+            client.adsr_set(int(args.args[0]), int(args.args[1]),
+                            int(args.args[2]), int(args.args[3]))
         else:
             sys.exit(f"Unknown command: {cmd}")
     finally:

@@ -62,6 +62,7 @@ for byte in [CMD|0x80, STATUS, LEN] + DATA:
 | 0x04 | STATUS_FLASH_ERR | SPI Flash 读写/擦除错误 |
 | 0x05 | STATUS_NOT_SUPPORTED | 当前存储后端不支持该 FLASH 命令 |
 | 0x06 | STATUS_INVALID_ADDR | 地址非法 |
+| 0x07 | STATUS_INVALID_PARAM | 参数值非法或与固件固定参数不匹配 |
 
 ## 命令一览
 
@@ -285,7 +286,7 @@ Offset | Size | 内容
 #### CMD_ADSR_GET (0x30) — 读取 ADSR 包络参数
 
 - 负载: 无
-- 应答: 7 字节
+- 应答: 11 字节
 
 ```
 Offset | Size | 内容
@@ -302,14 +303,18 @@ Offset | Size | 内容
   10   |  1   | ADSR_RELEASE_RATE_FRAC_L (Release 步进值 8.8 定点, 低字节)
 ```
 
-实际阶段时长可由 `ceil(幅度/步进) × TICK_MS` 计算。Sustain 衰减率使用 8.8 定点小数：`rate = raw / 256`（单位 envelope/tick），通过 `SynthCore.h` 的 `ADSR_SUSTAIN_DECAY_MS` 宏配置（如 2000ms → FRAC=64 → rate=0.25/tick）。所有 `*_RATE_FRAC` 值为 `__xdata uint16_t` 运行时变量，由 `AdsrInit()` 在 `main()` 启动时根据 MS 时长宏初始化。
+实际阶段时长可由 `ceil(幅度/步进) × TICK_MS` 计算。Sustain 衰减率使用 8.8 定点小数：`rate = raw / 256`（单位 envelope/tick），通过 `SynthCore.h` 的 `ADSR_SUSTAIN_DECAY_MS` 宏配置（如 2000ms → FRAC=64 → rate=0.25/tick）。所有 `*_RATE_FRAC` 值为 `__xdata uint16_t` 运行时变量，由 `AdsrInit()` 在 `main()` 启动时根据 MS 时长宏初始化，也可由 `CMD_ADSR_SET` 临时覆盖。
 
 ---
 
-#### CMD_ADSR_SET (0x31) — 写入 ADSR 参数 (保留)
+#### CMD_ADSR_SET (0x31) — 写入 ADSR 速率参数
 
-- 负载: 7 字节 (格式同 ADSR_GET)
-- 应答: STATUS_NOT_SUPPORTED (当前 ADSR 参数为编译时常量，暂不支持运行时修改)
+- 负载: 11 字节 (格式同 ADSR_GET)
+- 应答: STATUS_OK / STATUS_BAD_LEN / STATUS_INVALID_PARAM
+
+`ADSR_ENV_MAX`、`ADSR_TICK_MS`、`ADSR_SUSTAIN_THRESHOLD` 是固件固定参数，SET 时必须与当前固件返回值一致；四个 `*_RATE_FRAC` 字段会写入运行时 `__xdata uint16_t` 变量，立即影响后续包络 tick。参数不会持久化，复位后由 `AdsrInit()` 按 `SynthCore.h` 的毫秒宏重新计算。
+
+Attack、Decay、Release 速率必须非 0；Sustain decay 可为 0，表示 sustain 阶段不自动衰减。
 
 ---
 
@@ -404,7 +409,8 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 <command> [args...]
 | `note-off` | `<NOTE>` | 触发 NoteOff RELEASE (0–127) |
 | `fast-note-on` | `<NOTE> [VEL]` | 快速 NoteOn，无应答 (0–127, 可选力度 0–127) |
 | `fast-note-off` | `<NOTE>` | 快速 NoteOff，无应答 (0–127) |
-| `adsr-get` | — | ADSR 包络参数 (步进值 + 范围) |
+| `adsr-get` | — | ADSR 包络参数 (8.8 速率 + 范围) |
+| `adsr-set` | `<A_MS> <D_MS> <S_MS> <R_MS>` | 写入运行时 ADSR 时长；S_MS=0 表示 sustain 不衰减 |
 | `play` | — | 开始播放 |
 | `stop` | — | 停止播放 |
 | `prev` | — | 上一曲 |
@@ -453,6 +459,7 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-on 60 80    # 触发 C5
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 voice            # 查看声道
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-off 60      # 释放 C5
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 adsr-get         # ADSR 参数
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 adsr-set 10 30 2000 300  # 运行时设置 ADSR(ms)
 
 # 快速音符（无应答，适合低延迟演奏）
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 fast-note-on 60 100

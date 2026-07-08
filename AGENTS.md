@@ -279,7 +279,7 @@ while (1) {
 - Player 使用 `GetSysMs()` 驱动乐谱事件调度和包络衰减
 - 乐谱 delta (raw tick) × 8 = 毫秒 (TickPerSecond=125, 1000/125=8ms/tick)
 - **包络 tick**: 每 `ADSR_TICK_MS` (5ms) 调用 `GenDecayEnvlopeAsm`, 使用 `nextTickMs` 相位锁定累加器 (不受主循环忙闲漂移影响)
-- ADSR 阶段时长由 `SynthCore.h` 宏 (`ADSR_ATTACK_MS=20`, `ADSR_DECAY_MS=60`, `ADSR_RELEASE_MS=100`) 控制，步进值编译期推导
+- ADSR 默认阶段时长由 `SynthCore.h` 宏 (`ADSR_ATTACK_MS=10`, `ADSR_DECAY_MS=30`, `ADSR_SUSTAIN_DECAY_MS=2000`, `ADSR_RELEASE_MS=300`) 初始化；串口 `ADSR_SET` 可运行时写入 8.8 定点速率，复位后恢复宏默认值
 
 ### Fixed memory layout (critical — do not change blindly)
 
@@ -310,10 +310,10 @@ After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), opt
 
 | State | envelopePhase | envelopeLevel | Trigger |
 |-------|:---:|:---:|---|
-| ATTACK | 0→128 (ramp +22/tick) | CurveTable[idx] | NoteOn |
-| DECAY | 128→100 (ramp −3/tick) | CurveTable[idx] | ATTACK end |
-| SUSTAIN | 100 (hold) | CurveTable[idx] | DECAY end |
-| RELEASE | 100→0 (ramp −1/tick) | CurveTable[idx] | NoteOff |
+| ATTACK | 0→128 (default +64/tick) | CurveTable[idx] | NoteOn |
+| DECAY | 128→100 (default −4.668/tick) | CurveTable[idx] | ATTACK end |
+| SUSTAIN | 100 (hold or default −0.25/tick) | CurveTable[idx] | DECAY end |
+| RELEASE | current→0 (default −2.137/tick) | CurveTable[idx] | NoteOff |
 | SILENT | — | 0 | RELEASE end / SynthReleaseAll |
 
 **ADSR 管线**: `env(0-128) × vel_scaled(MIDI_vel×2, 0-254) >> 8 → idx(0-127) → AdsrCurveTable[idx] → envelopeLevel(0-255)`
@@ -329,10 +329,10 @@ After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), opt
 **ADSR constants** (`SynthCore.h`):
 - `ADSR_TICK_MS=5` (tick 间隔 ms, 控制 `Player.c` 相位锁定环)
 - `ADSR_ENV_MAX=128` (内部 env 范围)
-- `ADSR_ATTACK_MS=20, ADSR_DECAY_MS=60, ADSR_RELEASE_MS=100` (阶段时长)
-- Step 值编译期从时长推导为 8.8 定点  `*_RATE_FRAC`，存储为 `__xdata uint16_t` 运行时变量（由 `AdsrInit()` 在 `main()` 启动时初始化），`envelopeFrac` 每 tick 累加，进位驱动 envelopePhase 增减
+- `ADSR_ATTACK_MS=10, ADSR_DECAY_MS=30, ADSR_SUSTAIN_DECAY_MS=2000, ADSR_RELEASE_MS=300` (默认阶段时长)
+- Step 值从时长推导为 8.8 定点 `*_RATE_FRAC`，存储为 `__xdata uint16_t` 运行时变量（由 `AdsrInit()` 在 `main()` 启动时初始化，也可通过串口 `ADSR_SET` 临时修改），`envelopeFrac` 每 tick 累加，进位驱动 envelopePhase 增减
 - `ADSR_SUSTAIN_THRESHOLD=100` (decay 目标, 78% of max)
-- `ADSR_SUSTAIN_DECAY_MS` (Sustain 衰减时长 ms, 0=平坦; 默认 0)
+- `ADSR_SUSTAIN_DECAY_MS` (Sustain 衰减时长 ms, 0=平坦; 默认 2000)
 - Non-linear curve: 三种曲线可选 via `VELOCITY_CURVE` 宏 (默认: -20dB log 表, 128 条)
 
 **VoiceState struct** (XRAM, 6 bytes/voice × 8 = 48 bytes):
@@ -484,8 +484,8 @@ Full framed binary protocol documented in `Protocol.h`. Summary:
 | PLAY/STOP/PREV/NEXT | 0x10-13 | Playback control |
 | SET_SONG | 0x14 | Switch to song index |
 | GET_STATUS | 0x15 | Current song, playing state |
-| ADSR_GET | 0x30 | ADSR parameters (7 bytes: ENV_MAX, TICK, step×5) |
-| ADSR_SET | 0x31 | Reserved |
+| ADSR_GET | 0x30 | ADSR parameters (11 bytes: ENV_MAX, TICK, 4×uint16 BE 8.8 rates, SUSTAIN_THRESHOLD) |
+| ADSR_SET | 0x31 | Set runtime ADSR rates with the same 11-byte payload; fixed fields must match current firmware |
 | FLASH_INFO/ID | 0x20/25 | SPI flash parameters / JEDEC ID |
 | FLASH_ERASE/ERASE_ALL | 0x21/22 | Sector/chip erase |
 | FLASH_READ | 0x23 | Read bytes from SPI flash |

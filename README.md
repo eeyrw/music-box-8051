@@ -109,7 +109,7 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 1. **Wavetable**: Configurable 8-bit signed PCM sample at 32 kHz (current: Square Wave C4, 5,428 samples, 5,306-sample attack + 121-sample loop). `WaveTable.h`/`.inc` define dimensions.
 2. **Phase accumulator**: 16.8 fixed-point per voice, indexed by MIDI note number through a precomputed `WaveTable_Increment` table
 3. **Linear interpolation**: Between adjacent samples using the 8-bit fractional phase component
-4. **Envelope**: Full ADSR model with 8.8 fixed-point fractional rate per tick. Attack (0→128), Decay (128→100), Sustain (hold or decay from 100→0), Release (linear decay to 0). Raw envelope (0-128) × velocity (0-254) → index into 128-entry non-linear response curve → final envelopeLevel (0-255). Tick interval `ADSR_TICK_MS=5ms`, phase-locked to system timer. Durations configurable via `SynthCore.h` macros (`ADSR_ATTACK_MS`, `ADSR_DECAY_MS`, `ADSR_RELEASE_MS`, `ADSR_SUSTAIN_DECAY_MS`).
+4. **Envelope**: Full ADSR model with 8.8 fixed-point fractional rate per tick. Attack (0→128), Decay (128→100), Sustain (hold or decay from 100→0), Release (linear decay from current env to 0). Raw envelope (0-128) × velocity (0-254) → index into 128-entry non-linear response curve → final envelopeLevel (0-255). Tick interval `ADSR_TICK_MS=5ms`, phase-locked to system timer. Default durations are configured via `SynthCore.h` macros (`ADSR_ATTACK_MS=10`, `ADSR_DECAY_MS=30`, `ADSR_SUSTAIN_DECAY_MS=2000`, `ADSR_RELEASE_MS=300`) and can be adjusted at runtime with the serial `adsr-set` command until reset.
 5. **Mixing**: 8 voices summed into a 16-bit accumulator, then `>>=1`, clipped to [-128, 127], and DC-shifted by +128 for unsigned 8-bit PWM
 6. **Dithering**: Galois 16-bit LFSR adds ±1 LSB triangular dither before PWM output, converting quantization noise to white noise floor. Toggle via `USE_DITHERING` macro in `SynthCore.inc`.
 
@@ -120,6 +120,10 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 - Score events: `nextEventMs += delta × 8` (TickPerSecond=125 → 8ms per tick)
 - Envelope tick: every `ADSR_TICK_MS` (5ms), phase-locked via `nextTickMs` accumulator (immune to main-loop jitter)
 - SPI flash operations use `GetSysMs()` for accurate busy-wait timeouts
+
+### Runtime ADSR tuning
+
+The serial protocol exposes ADSR rates as 11 bytes: `ENV_MAX`, `TICK_MS`, four 16-bit big-endian 8.8 rate fields, and `SUSTAIN_THRESHOLD`. `adsr-get` prints both raw rates and effective durations; `adsr-set ATTACK_MS DECAY_MS SUSTAIN_DECAY_MS RELEASE_MS` converts millisecond durations to the same 8.8 format. Attack, decay, and release must be non-zero; `SUSTAIN_DECAY_MS=0` keeps sustain flat. Runtime changes are not persisted and are reset by reboot or reflashing.
 
 ### Voice allocation
 

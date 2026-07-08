@@ -14,13 +14,14 @@ __xdata uint16_t AdsrSustainDecayRateFrac;
 void AdsrInit(void)
 {
 	AdsrAttackRateFrac =
-		(uint16_t)((ADSR_ENV_MAX * ADSR_TICK_MS + ADSR_ATTACK_MS - 1) / ADSR_ATTACK_MS)
-		* ADSR_FRAC_DEN;
+		(uint16_t)(((uint32_t)ADSR_ENV_MAX * ADSR_TICK_MS * ADSR_FRAC_DEN
+			+ ADSR_ATTACK_MS - 1) / ADSR_ATTACK_MS);
 	AdsrDecayRateFrac =
-		(uint16_t)(((ADSR_ENV_MAX - ADSR_SUSTAIN_THRESHOLD) * ADSR_TICK_MS
-			+ ADSR_DECAY_MS - 1) / ADSR_DECAY_MS)
-		* ADSR_FRAC_DEN;
-	AdsrReleaseRateFrac = (uint16_t)1 * ADSR_FRAC_DEN;
+		(uint16_t)(((uint32_t)(ADSR_ENV_MAX - ADSR_SUSTAIN_THRESHOLD)
+			* ADSR_TICK_MS * ADSR_FRAC_DEN + ADSR_DECAY_MS - 1) / ADSR_DECAY_MS);
+	AdsrReleaseRateFrac =
+		(uint16_t)(((uint32_t)ADSR_ENV_MAX * ADSR_TICK_MS * ADSR_FRAC_DEN
+			+ ADSR_RELEASE_MS - 1) / ADSR_RELEASE_MS);
 #if ADSR_SUSTAIN_DECAY_MS > 0
 	AdsrSustainDecayRateFrac =
 		(uint16_t)(((uint32_t)ADSR_SUSTAIN_THRESHOLD * ADSR_TICK_MS
@@ -28,6 +29,14 @@ void AdsrInit(void)
 #else
 	AdsrSustainDecayRateFrac = 0;
 #endif
+}
+
+void AdsrSetRates(uint16_t attack, uint16_t decay, uint16_t sustainDecay, uint16_t release)
+{
+	AdsrAttackRateFrac = attack;
+	AdsrDecayRateFrac = decay;
+	AdsrSustainDecayRateFrac = sustainDecay;
+	AdsrReleaseRateFrac = release;
 }
 
 #if VELOCITY_CURVE == VEL_CURVE_POWER2

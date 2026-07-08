@@ -102,7 +102,7 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 1. **Wavetable**: Configurable 8-bit signed PCM sample at 32 kHz (current: Square Wave C4, 5,428 samples, 5,306-sample attack + 121-sample loop). `WaveTable.h`/`.inc` define dimensions.
 2. **Phase accumulator**: 16.8 fixed-point per voice, indexed by MIDI note number through a precomputed `WaveTable_Increment` table
 3. **Linear interpolation**: Between adjacent samples using the 8-bit fractional phase component
-4. **Envelope**: Full ADSR model. Attack (0→128, ramp +22/tick), Decay (128→100, ramp −3/tick), Sustain (hold at 100), Release (linear decay to 0, ramp −1/tick). Raw envelope (0-128) × velocity (0-254) → index into 128-entry non-linear response curve → final envelopeLevel (0-255). Tick interval `ADSR_TICK_MS=5ms`, phase-locked to system timer. Durations: Attack ~30ms, Decay ~50ms, Release ~500ms (configurable via `SynthCore.h` macros).
+4. **Envelope**: Full ADSR model with 8.8 fixed-point fractional rate per tick. Attack (0→128), Decay (128→100), Sustain (hold or decay from 100→0), Release (linear decay to 0). Raw envelope (0-128) × velocity (0-254) → index into 128-entry non-linear response curve → final envelopeLevel (0-255). Tick interval `ADSR_TICK_MS=5ms`, phase-locked to system timer. Durations configurable via `SynthCore.h` macros (`ADSR_ATTACK_MS`, `ADSR_DECAY_MS`, `ADSR_RELEASE_MS`, `ADSR_SUSTAIN_DECAY_MS`).
 5. **Mixing**: 8 voices summed into a 16-bit accumulator, then `>>=1`, clipped to [-128, 127], and DC-shifted by +128 for unsigned 8-bit PWM
 6. **Dithering**: Galois 16-bit LFSR adds ±1 LSB triangular dither before PWM output, converting quantization noise to white noise floor. Toggle via `USE_DITHERING` macro in `SynthCore.inc`.
 

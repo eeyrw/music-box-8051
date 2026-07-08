@@ -330,19 +330,20 @@ After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), opt
 - `ADSR_TICK_MS=5` (tick 间隔 ms, 控制 `Player.c` 相位锁定环)
 - `ADSR_ENV_MAX=128` (内部 env 范围)
 - `ADSR_ATTACK_MS=30, ADSR_DECAY_MS=60, ADSR_RELEASE_MS=400` (阶段时长)
-- Step 值 (`ADSR_ATTACK_RATE=22, ADSR_DECAY_RATE=3, ADSR_RELEASE_RATE=1`) 编译期从时长推导
+- Step 值编译期从时长推导: 8.8 定点数 `*_RATE_FRAC`（分子×256），`envelopeFrac` 每 tick 累加，进位驱动 envelopePhase 增减
 - `ADSR_SUSTAIN_THRESHOLD=100` (decay 目标, 78% of max)
-- `ADSR_SUSTAIN_DECAY_RATE=0` (0=平坦 sustain; >0=缓慢衰减)
+- `ADSR_SUSTAIN_DECAY_MS` (Sustain 衰减时长 ms, 0=平坦; 默认 0)
 - Non-linear curve: 三种曲线可选 via `VELOCITY_CURVE` 宏 (默认: -20dB log 表, 128 条)
 
-**VoiceState struct** (XRAM, 5 bytes/voice × 8 = 40 bytes):
+**VoiceState struct** (XRAM, 6 bytes/voice × 8 = 48 bytes):
 ```c
 typedef struct _VoiceState {
     uint8_t midiNote;       // 0: NoteOff 匹配
     uint8_t velocity;       // 1: MIDI_vel << 1 (0-254), 乘法缩放因子
     uint8_t envelopeState;  // 2: SILENT/ATTACK/DECAY/SUSTAIN/RELEASE
     uint8_t envelopePhase;  // 3: 当前 env 值 (0-128)
-    uint8_t reserved;       // 4: 分配时间戳 (FIFO steal 用)
+    uint8_t envelopeFrac;   // 4: 8.8 定点小数累加器 (1/256 分辨率)
+    uint8_t reserved;       // 5: 分配时间戳 (FIFO steal 用)
 } VoiceState;
 ```
 
@@ -460,7 +461,7 @@ Full framed binary protocol documented in `Protocol.h`. Summary:
 | MEM_INFO | 0x04 | Stack pointer, free stack bytes |
 | AUDIO_INFO | 0x05 | mixOut, active voice count, lastSoundUnit |
 | ADC_READ | 0x06 | Read ADC channel (uint16_t) |
-| VOICE_DUMP | 0x07 | Full 8-voice state snapshot (96 bytes, 12/voice incl midiNote+velocity+state) |
+| VOICE_DUMP | 0x07 | Full 8-voice state snapshot (104 bytes, 13/voice incl midiNote+velocity+state+frac) |
 | SYS_INFO | 0x08 | Comprehensive system status (uptime, backend, audio, voices, song, mode — 14 bytes) |
 | NOTE_ON | 0x09 | Trigger NoteOn with ADSR ATTACK (payload: 1 byte MIDI note, optional vel byte) |
 | NOTE_OFF | 0x0A | Trigger NoteOff → RELEASE (payload: 1 byte MIDI note) |

@@ -13,7 +13,7 @@
 ;   0x6E-0xFF: C 栈 (146 字节)
 ;
 ;   Player (~34 字节) → XRAM
-;   VoiceState (5×8=40 字节) → XRAM
+;   VoiceState (6×8=48 字节) → XRAM
 ;====================================================================
 
 	.include "WaveTable.inc"
@@ -26,15 +26,17 @@
 	ADSR_TICK_MS=5
 
 	; ---- ADSR 步进值 (同步于 SynthCore.h) ----
-	; ATTACK: step=22 → 6 ticks × 5ms = 30ms
-	; DECAY:  step=3  → ceil(28/3)=10 ticks × 5ms = 50ms (delta=28)
-	; RELEASE: step=1  → 100 ticks × 5ms = 500ms (from SUSTAIN_THR=100)
+	; ★ 8.8 定点数: FRAC 版 = 原始 _RATE × 256
+	; ATTACK: step=22/256*256 → carry=22 per tick → 6 ticks × 5ms = 30ms
+	; DECAY:  step=3/256*256 → carry=3 per tick → ceil(28/3)=10 ticks × 5ms = 50ms
+	; RELEASE: step=1/256*256 → carry=1 per tick → 100 ticks × 5ms = 500ms
+	; SUSTAIN_DECAY: FRAC 值直接设置, 如 128=0.5/tick → 2000ms
 	ADSR_ENV_MAX=128
-	ADSR_ATTACK_RATE=22
-	ADSR_DECAY_RATE=3
+	ADSR_ATTACK_RATE_FRAC=5632      ; 22*256
+	ADSR_DECAY_RATE_FRAC=768        ; 3*256
 	ADSR_SUSTAIN_THRESHOLD=100
-	ADSR_SUSTAIN_DECAY_RATE=0
-	ADSR_RELEASE_RATE=1
+	ADSR_SUSTAIN_DECAY_RATE_FRAC=200  ; 0=平坦, 128=0.5/tick
+	ADSR_RELEASE_RATE_FRAC=256      ; 1*256
 
 	; ---- 包络状态 ----
 	ENV_STATE_SILENT=0
@@ -59,17 +61,19 @@
 	pVal_h=7
 	pSampleVal=8
 
-; ---- VoiceState XRAM 字段偏移 (5 字节/声道) ----
+; ---- VoiceState XRAM 字段偏移 (6 字节/声道) ----
 ;   0: midiNote
 ;   1: velocity  (MIDI_vel << 1, 0-254)
 ;   2: envelopeState
 ;   3: envelopePhase  (att/dec/sus/rel: 当前 env 值 0-128)
-;   4: reserved
+;   4: envelopeFrac   (8.8 定点小数累加器)
+;   5: reserved       (FIFO 时间戳)
 	vState_midiNote=0
 	vState_velocity=1
 	vState_envState=2
 	vState_envPhase=3
-	vState_sz=5
+	vState_envFrac=4
+	vState_sz=6
 
 ; ---- Synthesizer 字段偏移 ----
 	pMixOut_l=unitSz*POLY_NUM          ; 72

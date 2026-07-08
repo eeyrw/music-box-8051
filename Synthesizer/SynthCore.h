@@ -13,23 +13,30 @@
 // ================================================================
 
 #define ADSR_TICK_MS              5
-#define ADSR_ATTACK_MS           30
+#define ADSR_ATTACK_MS           20
 #define ADSR_DECAY_MS            60
-#define ADSR_RELEASE_MS         200
+#define ADSR_RELEASE_MS         100
+#define ADSR_SUSTAIN_DECAY_MS     0
 
 #define ADSR_ENV_MAX            128
 #define ADSR_SUSTAIN_THRESHOLD  100
-#define ADSR_SUSTAIN_DECAY_RATE   0
 
-// ---------- 编译期推导步进值 (勿手改) ----------
-// step = ceil(幅度 × TICK / 时长)
+#define ADSR_FRAC_DEN  256
+
+// 编译期推导: 8.8 定点步进值 (rate_frac / 256 = 每 tick 的实际增量)
 #define ADSR_ATTACK_RATE   ((ADSR_ENV_MAX * ADSR_TICK_MS + ADSR_ATTACK_MS - 1) / ADSR_ATTACK_MS)
 #define ADSR_DECAY_DELTA   (ADSR_ENV_MAX - ADSR_SUSTAIN_THRESHOLD)
 #define ADSR_DECAY_RATE    ((ADSR_DECAY_DELTA * ADSR_TICK_MS + ADSR_DECAY_MS - 1) / ADSR_DECAY_MS)
-// Release: env 线性衰减, 从 SUSTAIN_THR 衰减到 0
-// 时长 = ceil(SUSTAIN_THR/step) × TICK
-// RELEASE_RATE=1  → 100 ticks × 5ms = 500ms (smooth)
 #define ADSR_RELEASE_RATE  1
+
+#define ADSR_ATTACK_RATE_FRAC   ((uint16_t)(ADSR_ATTACK_RATE) * ADSR_FRAC_DEN)
+#define ADSR_DECAY_RATE_FRAC    ((uint16_t)(ADSR_DECAY_RATE) * ADSR_FRAC_DEN)
+#define ADSR_RELEASE_RATE_FRAC  ((uint16_t)(ADSR_RELEASE_RATE) * ADSR_FRAC_DEN)
+#if ADSR_SUSTAIN_DECAY_MS > 0
+#define ADSR_SUSTAIN_DECAY_RATE_FRAC  ((uint16_t)(((uint32_t)ADSR_SUSTAIN_THRESHOLD * ADSR_TICK_MS * ADSR_FRAC_DEN + ADSR_SUSTAIN_DECAY_MS - 1) / ADSR_SUSTAIN_DECAY_MS))
+#else
+#define ADSR_SUSTAIN_DECAY_RATE_FRAC  0
+#endif
 
 // ---- ADSR 包络状态 ----
 #define ENV_STATE_SILENT  0
@@ -88,6 +95,7 @@ typedef struct _VoiceState
 	uint8_t velocity;
 	uint8_t envelopeState;
 	uint8_t envelopePhase;
+	uint8_t envelopeFrac;
 	uint8_t reserved;
 } VoiceState;
 

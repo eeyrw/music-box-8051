@@ -364,11 +364,11 @@ static void dispatch_command(void)
 
 	case CMD_VOICE_DUMP:
 	{
-		uint8_t i, j, buf[96];
+		uint8_t i, j, buf[104];
 		for (i = 0; i < POLY_NUM; i++)
 		{
 			SoundUnitSplit *su = &synthForAsm.SoundUnitUnionList[i].split;
-			j = i * 12;
+			j = i * 13;
 			buf[j + 0] = su->increment_frac;
 			buf[j + 1] = su->increment_int;
 			buf[j + 2] = su->wavetablePos_frac;
@@ -381,8 +381,9 @@ static void dispatch_command(void)
 			buf[j + 9] = voiceState[i].midiNote;
 			buf[j + 10] = voiceState[i].velocity;
 			buf[j + 11] = voiceState[i].envelopeState;
+			buf[j + 12] = voiceState[i].envelopeFrac;
 		}
-		send_data_response(CMD_VOICE_DUMP, STATUS_OK, buf, 96);
+		send_data_response(CMD_VOICE_DUMP, STATUS_OK, buf, 104);
 		break;
 	}
 
@@ -521,7 +522,7 @@ static void dispatch_command(void)
 		buf[2] = ADSR_ATTACK_RATE;
 		buf[3] = ADSR_DECAY_RATE;
 		buf[4] = ADSR_SUSTAIN_THRESHOLD;
-		buf[5] = ADSR_SUSTAIN_DECAY_RATE;
+		buf[5] = (uint8_t)(ADSR_SUSTAIN_DECAY_RATE_FRAC);
 		buf[6] = ADSR_RELEASE_RATE;
 		send_data_response(CMD_ADSR_GET, STATUS_OK, buf, 7);
 		break;

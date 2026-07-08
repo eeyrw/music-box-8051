@@ -68,6 +68,7 @@ void SynthInit(Synthesizer *synth)
 		voiceState[i].velocity = 0;
 		voiceState[i].envelopeState = ENV_STATE_SILENT;
 		voiceState[i].envelopePhase = 0;
+		voiceState[i].envelopeFrac = 0;
 		voiceState[i].reserved = 0;
 	}
 	synth->lastSoundUnit = 0;
@@ -160,6 +161,7 @@ void NoteOnAsm(uint8_t note, uint8_t velocity)
 	voiceState[idx].velocity = vel_scaled;
 	voiceState[idx].envelopeState = ENV_STATE_ATTACK;
 	voiceState[idx].envelopePhase = 0;
+	voiceState[idx].envelopeFrac = 0;
 	voiceState[idx].reserved = alloc_stamp;
 
 	EA = 1;
@@ -193,10 +195,15 @@ void GenDecayEnvlopeAsm(void)
 		uint8_t vel = voiceState[i].velocity;
 		uint8_t newState = state;
 		uint8_t newEnv = env;
+		uint8_t newFrac = voiceState[i].envelopeFrac;
+		uint8_t carry;
 
 		if (state == ENV_STATE_ATTACK)
 		{
-			uint16_t v = (uint16_t)env + ADSR_ATTACK_RATE;
+			uint16_t frac = (uint16_t)newFrac + ADSR_ATTACK_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			uint16_t v = (uint16_t)env + carry;
 			if (v >= ADSR_ENV_MAX)
 			{
 				newEnv = ADSR_ENV_MAX;
@@ -209,48 +216,70 @@ void GenDecayEnvlopeAsm(void)
 		}
 		else if (state == ENV_STATE_DECAY)
 		{
-			int16_t v = (int16_t)env - ADSR_DECAY_RATE;
-			if (v <= ADSR_SUSTAIN_THRESHOLD)
+			uint16_t frac = (uint16_t)newFrac + ADSR_DECAY_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			if (carry >= env)
 			{
 				newEnv = ADSR_SUSTAIN_THRESHOLD;
 				newState = ENV_STATE_SUSTAIN;
 			}
 			else
 			{
-				newEnv = (uint8_t)v;
+				uint8_t v = env - carry;
+				if (v <= ADSR_SUSTAIN_THRESHOLD)
+				{
+					newEnv = ADSR_SUSTAIN_THRESHOLD;
+					newState = ENV_STATE_SUSTAIN;
+				}
+				else
+				{
+					newEnv = v;
+				}
 			}
 		}
 		else if (state == ENV_STATE_SUSTAIN)
 		{
-#if ADSR_SUSTAIN_DECAY_RATE > 0
-			int16_t v = (int16_t)env - ADSR_SUSTAIN_DECAY_RATE;
-			if (v <= 0)
+#if ADSR_SUSTAIN_DECAY_RATE_FRAC > 0
+			uint16_t frac = (uint16_t)newFrac + ADSR_SUSTAIN_DECAY_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			if (carry > 0)
 			{
-				newEnv = 0;
-				newState = ENV_STATE_SILENT;
-			}
-			else
-			{
-				newEnv = (uint8_t)v;
+				if (carry >= env)
+				{
+					newEnv = 0;
+					newState = ENV_STATE_SILENT;
+				}
+				else
+				{
+					newEnv = env - carry;
+				}
 			}
 #endif
 		}
 		else if (state == ENV_STATE_RELEASE)
 		{
-			int16_t v = (int16_t)env - ADSR_RELEASE_RATE;
-			if (v <= 0)
+			uint16_t frac = (uint16_t)newFrac + ADSR_RELEASE_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			if (carry > 0)
 			{
-				newEnv = 0;
-				newState = ENV_STATE_SILENT;
-			}
-			else
-			{
-				newEnv = (uint8_t)v;
+				if (carry >= env)
+				{
+					newEnv = 0;
+					newState = ENV_STATE_SILENT;
+				}
+				else
+				{
+					newEnv = env - carry;
+				}
 			}
 		}
 
 		voiceState[i].envelopeState = newState;
 		voiceState[i].envelopePhase = newEnv;
+		voiceState[i].envelopeFrac = newFrac;
 
 		if (newState == ENV_STATE_SILENT || newEnv == 0)
 		{
@@ -290,6 +319,7 @@ void NoteOnAsmP(uint8_t note)
 	voiceState[idx].velocity = (uint8_t)(127 * 2);
 	voiceState[idx].envelopeState = ENV_STATE_ATTACK;
 	voiceState[idx].envelopePhase = 0;
+	voiceState[idx].envelopeFrac = 0;
 
 	idx++;
 	if (idx == POLY_NUM)
@@ -309,10 +339,15 @@ void GenDecayEnvlopeAsmP(void)
 		uint8_t vel  = voiceState[i].velocity;
 		uint8_t newState = state;
 		uint8_t newEnv = env;
+		uint8_t newFrac = voiceState[i].envelopeFrac;
+		uint8_t carry;
 
 		if (state == ENV_STATE_ATTACK)
 		{
-			uint16_t v = (uint16_t)env + ADSR_ATTACK_RATE;
+			uint16_t frac = (uint16_t)newFrac + ADSR_ATTACK_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			uint16_t v = (uint16_t)env + carry;
 			if (v >= ADSR_ENV_MAX)
 			{
 				newEnv = ADSR_ENV_MAX;
@@ -325,48 +360,70 @@ void GenDecayEnvlopeAsmP(void)
 		}
 		else if (state == ENV_STATE_DECAY)
 		{
-			int16_t v = (int16_t)env - ADSR_DECAY_RATE;
-			if (v <= ADSR_SUSTAIN_THRESHOLD)
+			uint16_t frac = (uint16_t)newFrac + ADSR_DECAY_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			if (carry >= env)
 			{
 				newEnv = ADSR_SUSTAIN_THRESHOLD;
 				newState = ENV_STATE_SUSTAIN;
 			}
 			else
 			{
-				newEnv = (uint8_t)v;
+				uint8_t v = env - carry;
+				if (v <= ADSR_SUSTAIN_THRESHOLD)
+				{
+					newEnv = ADSR_SUSTAIN_THRESHOLD;
+					newState = ENV_STATE_SUSTAIN;
+				}
+				else
+				{
+					newEnv = v;
+				}
 			}
 		}
 		else if (state == ENV_STATE_SUSTAIN)
 		{
-#if ADSR_SUSTAIN_DECAY_RATE > 0
-			int16_t v = (int16_t)env - ADSR_SUSTAIN_DECAY_RATE;
-			if (v <= 0)
+#if ADSR_SUSTAIN_DECAY_RATE_FRAC > 0
+			uint16_t frac = (uint16_t)newFrac + ADSR_SUSTAIN_DECAY_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			if (carry > 0)
 			{
-				newEnv = 0;
-				newState = ENV_STATE_SILENT;
-			}
-			else
-			{
-				newEnv = (uint8_t)v;
+				if (carry >= env)
+				{
+					newEnv = 0;
+					newState = ENV_STATE_SILENT;
+				}
+				else
+				{
+					newEnv = env - carry;
+				}
 			}
 #endif
 		}
 		else if (state == ENV_STATE_RELEASE)
 		{
-			int16_t v = (int16_t)env - ADSR_RELEASE_RATE;
-			if (v <= 0)
+			uint16_t frac = (uint16_t)newFrac + ADSR_RELEASE_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			if (carry > 0)
 			{
-				newEnv = 0;
-				newState = ENV_STATE_SILENT;
-			}
-			else
-			{
-				newEnv = (uint8_t)v;
+				if (carry >= env)
+				{
+					newEnv = 0;
+					newState = ENV_STATE_SILENT;
+				}
+				else
+				{
+					newEnv = env - carry;
+				}
 			}
 		}
 
 		voiceState[i].envelopeState = newState;
 		voiceState[i].envelopePhase = newEnv;
+		voiceState[i].envelopeFrac = newFrac;
 
 		if (newState == ENV_STATE_SILENT)
 		{
@@ -464,36 +521,59 @@ void GenDecayEnvlopeC(void)
 		uint8_t vel  = voiceState[i].velocity;
 		uint8_t newState = state;
 		uint8_t newEnv = env;
+		uint8_t newFrac = voiceState[i].envelopeFrac;
+		uint8_t carry;
 
 		if (state == ENV_STATE_ATTACK)
 		{
-			uint16_t v = (uint16_t)env + ADSR_ATTACK_RATE;
+			uint16_t frac = (uint16_t)newFrac + ADSR_ATTACK_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			uint16_t v = (uint16_t)env + carry;
 			if (v >= ADSR_ENV_MAX) { newEnv = ADSR_ENV_MAX; newState = ENV_STATE_DECAY; }
 			else { newEnv = (uint8_t)v; }
 		}
 		else if (state == ENV_STATE_DECAY)
 		{
-			int16_t v = (int16_t)env - ADSR_DECAY_RATE;
-			if (v <= ADSR_SUSTAIN_THRESHOLD) { newEnv = ADSR_SUSTAIN_THRESHOLD; newState = ENV_STATE_SUSTAIN; }
-			else { newEnv = (uint8_t)v; }
+			uint16_t frac = (uint16_t)newFrac + ADSR_DECAY_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			if (carry >= env) { newEnv = ADSR_SUSTAIN_THRESHOLD; newState = ENV_STATE_SUSTAIN; }
+			else
+			{
+				uint8_t v = env - carry;
+				if (v <= ADSR_SUSTAIN_THRESHOLD) { newEnv = ADSR_SUSTAIN_THRESHOLD; newState = ENV_STATE_SUSTAIN; }
+				else { newEnv = v; }
+			}
 		}
 		else if (state == ENV_STATE_SUSTAIN)
 		{
-#if ADSR_SUSTAIN_DECAY_RATE > 0
-			int16_t v = (int16_t)env - ADSR_SUSTAIN_DECAY_RATE;
-			if (v <= 0) { newEnv = 0; newState = ENV_STATE_SILENT; }
-			else { newEnv = (uint8_t)v; }
+#if ADSR_SUSTAIN_DECAY_RATE_FRAC > 0
+			uint16_t frac = (uint16_t)newFrac + ADSR_SUSTAIN_DECAY_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			if (carry > 0)
+			{
+				if (carry >= env) { newEnv = 0; newState = ENV_STATE_SILENT; }
+				else { newEnv = env - carry; }
+			}
 #endif
 		}
 		else if (state == ENV_STATE_RELEASE)
 		{
-			int16_t v = (int16_t)env - ADSR_RELEASE_RATE;
-			if (v <= 0) { newEnv = 0; newState = ENV_STATE_SILENT; }
-			else { newEnv = (uint8_t)v; }
+			uint16_t frac = (uint16_t)newFrac + ADSR_RELEASE_RATE_FRAC;
+			carry = (uint8_t)(frac >> 8);
+			newFrac = (uint8_t)frac;
+			if (carry > 0)
+			{
+				if (carry >= env) { newEnv = 0; newState = ENV_STATE_SILENT; }
+				else { newEnv = env - carry; }
+			}
 		}
 
 		voiceState[i].envelopeState = newState;
 		voiceState[i].envelopePhase = newEnv;
+		voiceState[i].envelopeFrac = newFrac;
 
 		if (newState == ENV_STATE_SILENT || newEnv == 0)
 		{

@@ -150,10 +150,10 @@ mixOut 为 16-bit 有符号值。
 #### CMD_VOICE_DUMP (0x07) — 合成器 8 声道完整快照
 
 - 负载: 无
-- 应答: 96 字节，每个 voice 12 字节，共计 8 个 voice
+- 应答: 104 字节，每个 voice 13 字节，共计 8 个 voice
 
 ```
-Per-Voice (12 bytes):
+Per-Voice (13 bytes):
 Offset | Size | 字段
    0   |  1   | increment_frac      (相位增量低字节)
    1   |  1   | increment_int       (相位增量高字节)
@@ -167,9 +167,10 @@ Offset | Size | 字段
    9   |  1   | midiNote            (MIDI 音符编号, NoteOff 查找用)
   10   |  1   | velocity            (力度缩放值, MIDI_vel × 2, 0-254)
   11   |  1   | envelopeState       (包络状态: 0=SILENT, 1=ATTACK, 2=DECAY, 3=SUSTAIN, 4=RELEASE)
+  12   |  1   | envelopeFrac        (8.8 定点小数累加器)
 ```
 
-Voice 0 位于 data[0..11]，Voice 1 位于 data[12..23]，以此类推。
+Voice 0 位于 data[0..12]，Voice 1 位于 data[13..25]，以此类推。
 
 ---
 
@@ -273,15 +274,14 @@ Offset | Size | 内容
 Offset | Size | 内容
    0   |  1   | ADSR_ENV_MAX (内部 env 范围, 128)
    1   |  1   | ADSR_TICK_MS (包络更新间隔, 5ms)
-   2   |  1   | ADSR_ATTACK_RATE (Attack 步进值)
-   3   |  1   | ADSR_DECAY_RATE  (Decay 步进值)
+   2   |  1   | ADSR_ATTACK_RATE (Attack 步进值, 整数)
+   3   |  1   | ADSR_DECAY_RATE  (Decay 步进值, 整数)
    4   |  1   | ADSR_SUSTAIN_THRESHOLD (Sustain 起始阈值)
-   5   |  1   | ADSR_SUSTAIN_DECAY_RATE (Sustain 衰减率, 0=平坦)
-   6   |  1   | ADSR_RELEASE_RATE (Release 步进值)
+   5   |  1   | ADSR_SUSTAIN_DECAY_RATE_FRAC (Sustain 衰减率 8.8 定点, 0=平坦, 256=1.0/tick)
+   6   |  1   | ADSR_RELEASE_RATE (Release 步进值，整数)
 ```
 
-实际阶段时长可由 `ceil(幅度/步进) × TICK_MS` 计算。
-编译时的目标时长通过 `SynthCore.h` 的 `ADSR_ATTACK_MS` / `ADSR_DECAY_MS` / `ADSR_RELEASE_MS` 宏控制。
+实际阶段时长可由 `ceil(幅度/步进) × TICK_MS` 计算。Sustain 衰减率使用 8.8 定点小数：`rate = byte5 / 256`（单位 envelope/tick），通过 `SynthCore.h` 的 `ADSR_SUSTAIN_DECAY_MS` 宏配置（如 2000ms → FRAC=64 → rate=0.25/tick）。
 
 ---
 

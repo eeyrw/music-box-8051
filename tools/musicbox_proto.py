@@ -312,8 +312,8 @@ class MusicBoxClient:
         data = self._do_cmd(CMD_VOICE_DUMP)
         state_names = {0: "SILENT", 1: "ATTACK", 2: "DECAY", 3: "SUSTAIN", 4: "RELEASE"}
         for v in range(8):
-            off = v * 12
-            fields = data[off:off + 12]
+            off = v * 13
+            fields = data[off:off + 13]
             inc_frac  = fields[0]
             inc_int   = fields[1]
             pos_frac  = fields[2]
@@ -326,6 +326,7 @@ class MusicBoxClient:
             midi_note = fields[9]
             velocity  = fields[10]
             env_state = fields[11]
+            env_frac  = fields[12]
             active = "ACTIVE" if env_level > 0 else "idle  "
             print(
                 f"  V{v} [{active}] inc={inc_frac:#04x},{inc_int:#04x}  "
@@ -333,6 +334,7 @@ class MusicBoxClient:
                 f"env={env_level:#04x}(lvl)  "
                 f"val={val:+d}  sample={sample:+d}  note={midi_note}"
                 f"  vel={velocity}  state={state_names.get(env_state, str(env_state))}"
+                f"  frac={env_frac}"
             )
 
     def sysinfo(self):

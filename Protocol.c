@@ -89,6 +89,13 @@ static void send_response_err(uint8_t cmd, uint8_t err)
 	send_simple_response(cmd, err);
 }
 
+static uint8_t adsr_rate_valid(uint16_t rate, uint8_t allow_zero)
+{
+	if (rate == 0)
+		return allow_zero;
+	return rate <= ADSR_RATE_MAX;
+}
+
 static void proto_rx_put(uint8_t byte)
 {
 	uint8_t next = (rx_wr + 1) & RX_MASK;
@@ -555,6 +562,12 @@ static void dispatch_command(void)
 	}
 
 	case CMD_ADSR_SET:
+	{
+		uint16_t attack;
+		uint16_t decay;
+		uint16_t sustainDecay;
+		uint16_t release;
+
 		if (pkt_len != 11)
 		{
 			send_response_err(CMD_ADSR_SET, STATUS_BAD_LEN);
@@ -566,16 +579,22 @@ static void dispatch_command(void)
 			send_response_err(CMD_ADSR_SET, STATUS_INVALID_PARAM);
 			break;
 		}
-		if (read_u16_be(&pkt_data[2]) == 0 || read_u16_be(&pkt_data[4]) == 0
-		    || read_u16_be(&pkt_data[9]) == 0)
+		attack = read_u16_be(&pkt_data[2]);
+		decay = read_u16_be(&pkt_data[4]);
+		sustainDecay = read_u16_be(&pkt_data[7]);
+		release = read_u16_be(&pkt_data[9]);
+		if (attack < ADSR_RATE_MIN_PROGRESS || !adsr_rate_valid(attack, 0)
+		    || !adsr_rate_valid(decay, 0)
+		    || !adsr_rate_valid(sustainDecay, 1)
+		    || !adsr_rate_valid(release, 0))
 		{
 			send_response_err(CMD_ADSR_SET, STATUS_INVALID_PARAM);
 			break;
 		}
-		AdsrSetRates(read_u16_be(&pkt_data[2]), read_u16_be(&pkt_data[4]),
-		             read_u16_be(&pkt_data[7]), read_u16_be(&pkt_data[9]));
+		AdsrSetRates(attack, decay, sustainDecay, release);
 		send_response_ok(CMD_ADSR_SET);
 		break;
+	}
 
 	default:
 		send_response_err(pkt_cmd, STATUS_UNKNOWN_CMD);

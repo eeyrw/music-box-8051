@@ -179,7 +179,7 @@ Voice 0 位于 data[0..12]，Voice 1 位于 data[13..25]，以此类推。
 
 - 负载: 1 字节 MIDI 音符编号 (0–127), 可选第 2 字节 velocity (0–127, 默认 127)
 - 应答: 状态码
-- 行为: 调用 `NoteOnAsm(note, vel)`，分配空闲声道并进入 ADSR ATTACK 阶段 (env 从 0 渐起)。velocity 用于 `env × vel << 1` 缩放后查非线表。
+- 行为: 调用 `NoteOnAsm(note, vel)`，分配空闲声道并进入 ADSR ATTACK 阶段 (env 从 0 渐起)。velocity 使用 MIDI 范围 0-127；0 按 NoteOff 处理，>127 饱和为 127。内部使用 `vel_scaled = vel × 2`，再由 `(env × vel_scaled) >> 8` 得到非线性曲线表索引。
 
 ---
 
@@ -303,7 +303,25 @@ Offset | Size | 内容
   10   |  1   | ADSR_RELEASE_RATE_FRAC_L (Release 步进值 8.8 定点, 低字节)
 ```
 
-实际阶段时长可由 `ceil(幅度/步进) × TICK_MS` 计算。Sustain 衰减率使用 8.8 定点小数：`rate = raw / 256`（单位 envelope/tick），通过 `SynthCore.h` 的 `ADSR_SUSTAIN_DECAY_MS` 宏配置（如 2000ms → FRAC=64 → rate=0.25/tick）。所有 `*_RATE_FRAC` 值为 `__xdata uint16_t` 运行时变量，由 `AdsrInit()` 在 `main()` 启动时根据 MS 时长宏初始化，也可由 `CMD_ADSR_SET` 临时覆盖。
+ADSR rate 使用 unsigned 8.8 定点数，单位是 `envelopePhase / tick`。原始字段 `raw` 与实际步进关系为 `step = raw / 256`，每个 envelope tick 先把低 8 位累加到 `envelopeFrac`，再用高 8 位进位推动 `envelopePhase`。`ADSR_TICK_MS=5` 时，每秒有 200 个 envelope tick。
+
+毫秒时长到 rate 的换算公式：
+
+```
+raw = ceil(distance * ADSR_TICK_MS * 256 / duration_ms)
+```
+
+各阶段的 `distance`：Attack 为 `ADSR_ENV_MAX`，Decay 为 `ADSR_ENV_MAX - ADSR_SUSTAIN_THRESHOLD`，Sustain decay 为 `ADSR_SUSTAIN_THRESHOLD`，Release 为 `ADSR_ENV_MAX`。例如默认 Sustain decay 2000ms：`ceil(100 * 5 * 256 / 2000) = 64`，即 `0.25 envelope/tick`。
+
+实际阶段时长近似为：
+
+```
+duration_ms = ceil(distance / (raw / 256)) * ADSR_TICK_MS
+```
+
+由于状态切换时会把 `envelopeFrac` 清零，下一阶段不会继承上一阶段的小数残留。Release 在 NoteOff 时也清零 `envelopeFrac`，从当前 `envelopePhase` 开始线性下降。
+
+所有 `*_RATE_FRAC` 值为 `__xdata uint16_t` 运行时变量，由 `AdsrInit()` 在 `main()` 启动时根据 MS 时长宏初始化，也可由 `CMD_ADSR_SET` 临时覆盖。
 
 ---
 
@@ -314,7 +332,7 @@ Offset | Size | 内容
 
 `ADSR_ENV_MAX`、`ADSR_TICK_MS`、`ADSR_SUSTAIN_THRESHOLD` 是固件固定参数，SET 时必须与当前固件返回值一致；四个 `*_RATE_FRAC` 字段会写入运行时 `__xdata uint16_t` 变量，立即影响后续包络 tick。参数不会持久化，复位后由 `AdsrInit()` 按 `SynthCore.h` 的毫秒宏重新计算。
 
-Attack、Decay、Release 速率必须非 0；Sustain decay 可为 0，表示 sustain 阶段不自动衰减。
+取值约束：Attack 必须 `>= 0x0100`，确保首个 envelope tick 至少推进 1 个 env 单位；Decay 和 Release 必须非 0；Sustain decay 可为 0，表示 sustain 阶段不自动衰减。所有非零 rate 必须 `<= 0xFF00`，保证 `envelopeFrac + rate` 不发生 16-bit 溢出，且每 tick 的进位不超过 255。
 
 ---
 

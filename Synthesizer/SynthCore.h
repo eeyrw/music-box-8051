@@ -22,6 +22,8 @@
 #define ADSR_SUSTAIN_THRESHOLD  100
 
 #define ADSR_FRAC_DEN  256
+#define ADSR_RATE_MIN_PROGRESS ADSR_FRAC_DEN
+#define ADSR_RATE_MAX          0xFF00U
 
 extern __xdata uint16_t AdsrAttackRateFrac;
 extern __xdata uint16_t AdsrDecayRateFrac;

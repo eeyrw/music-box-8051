@@ -259,6 +259,13 @@ void NoteOnAsm(uint8_t note, uint8_t velocity)
 	uint8_t vel_scaled;
 	uint16_t inc;
 
+	if (velocity == 0)
+	{
+		NoteOffAsm(note);
+		return;
+	}
+	if (velocity > 127)
+		velocity = 127;
 	vel_scaled = (uint8_t)(velocity * 2);
 
 	idx = 0;
@@ -302,6 +309,7 @@ void NoteOffAsm(uint8_t note)
 			continue;
 		if (voiceState[i].envelopePhase == 0)
 			voiceState[i].envelopePhase = (uint8_t)(ADSR_ENV_MAX >> 1);
+		voiceState[i].envelopeFrac = 0;
 		voiceState[i].envelopeState = ENV_STATE_RELEASE;
 	}
 }
@@ -332,6 +340,7 @@ void GenDecayEnvlopeAsm(void)
 			{
 				newEnv = ADSR_ENV_MAX;
 				newState = ENV_STATE_DECAY;
+				newFrac = 0;
 			}
 			else
 			{
@@ -347,6 +356,7 @@ void GenDecayEnvlopeAsm(void)
 			{
 				newEnv = ADSR_SUSTAIN_THRESHOLD;
 				newState = ENV_STATE_SUSTAIN;
+				newFrac = 0;
 			}
 			else
 			{
@@ -355,6 +365,7 @@ void GenDecayEnvlopeAsm(void)
 				{
 					newEnv = ADSR_SUSTAIN_THRESHOLD;
 					newState = ENV_STATE_SUSTAIN;
+					newFrac = 0;
 				}
 				else
 				{

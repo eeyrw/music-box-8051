@@ -1,221 +1,303 @@
 #ifdef RUN_TEST
+
 #include "SynthCore.h"
-#include "Player.h"
+#include "PeriodTimer.h"
+#include "WaveTable.h"
 #include <stdint.h>
 #include <stdio.h>
-#include "PeriodTimer.h"
-
-#define TEST_LOOP_NUN 10000
 
 extern void UpdateTick(void);
 
-void PrintMem(uint8_t *src, uint8_t len)
+#define USE_LINEAR_INTEROP_FOR_TEST 1
+
+static uint16_t failures;
+static __xdata Synthesizer expectedSynth;
+
+#define ASSERT_TRUE(name, expr) do { \
+	if (!(expr)) { \
+		failures++; \
+		printf("FAIL %s\n", name); \
+	} \
+} while (0)
+
+#define ASSERT_EQ_U8(name, want, got) do { \
+	uint8_t _want = (uint8_t)(want); \
+	uint8_t _got = (uint8_t)(got); \
+	if (_want != _got) { \
+		failures++; \
+		printf("FAIL %s: want=%u got=%u\n", name, _want, _got); \
+	} \
+} while (0)
+
+#define ASSERT_EQ_U16(name, want, got) do { \
+	uint16_t _want = (uint16_t)(want); \
+	uint16_t _got = (uint16_t)(got); \
+	if (_want != _got) { \
+		failures++; \
+		printf("FAIL %s: want=%u got=%u\n", name, _want, _got); \
+	} \
+} while (0)
+
+#define ASSERT_EQ_I16(name, want, got) do { \
+	int16_t _want = (int16_t)(want); \
+	int16_t _got = (int16_t)(got); \
+	if (_want != _got) { \
+		failures++; \
+		printf("FAIL %s: want=%d got=%d\n", name, _want, _got); \
+	} \
+} while (0)
+
+static void reset_test_synth(void)
 {
-    for (uint8_t i = 0; i < len; i++)
-    {
-        printf("%02X ", src[i]);
-    }
-    printf("\n");
+	SynthCoreTestReset();
+	sysMsPre = 0;
+	sysMs = 0;
 }
-void TestInit(void)
+
+static uint8_t curve_level(uint8_t env, uint8_t velocity_scaled)
 {
-    SynthInit(&synthForC);
-    SynthInit(&synthForAsm);
+	uint8_t idx = (uint8_t)(((uint16_t)env * velocity_scaled) >> 8);
+	return AdsrCurveTable[idx];
 }
 
-int16_t abs_u16(int16_t num)
+static uint8_t high_s8_u8(int8_t a, uint8_t b)
 {
-    return num > 0 ? num : -num;
+	return (uint8_t)(((int16_t)a * (int16_t)b) >> 8);
 }
 
-void PrintParameters(Synthesizer *synth)
+static int8_t interpolate_sample(uint16_t pos, uint8_t frac)
 {
-    SoundUnitUnion *soundUnionList;
-    printf("MixOut:%d\n", synth->mixOut);
-    soundUnionList = &(synth->SoundUnitUnionList[0]);
+	int8_t a = WaveTable[pos];
+#if USE_LINEAR_INTEROP_FOR_TEST
+	int8_t b = WaveTable[pos + 1];
+	int8_t delta = (int8_t)(b - a);
+	return (int8_t)(a + (int8_t)high_s8_u8(delta, frac));
+#else
+	(void)frac;
+	return a;
+#endif
+}
 
-    printf("%16s", "Chn Val");
-    for (uint8_t k = 0; k < POLY_NUM; k++)
-    {
-        printf("%6d ", soundUnionList[k].combine.val);
-    }
-    printf("\n");
+static void synth_reference_step(Synthesizer *synth)
+{
+	int16_t mix = 0;
+	uint8_t i;
 
-    printf("%16s", "Chn Sample");
-    for (uint8_t k = 0; k < POLY_NUM; k++)
-    {
-        printf("%6d ", soundUnionList[k].combine.sampleVal);
-    }
-    printf("\n");
+	for (i = 0; i < POLY_NUM; i++) {
+		SoundUnitUnion *unit = &synth->SoundUnitUnionList[i];
+		uint8_t env = unit->split.envelopeLevel;
 
-    printf("%16s", "Chn EnvLevel");
-    for (uint8_t k = 0; k < POLY_NUM; k++)
-    {
-        printf("%6d ", soundUnionList[k].combine.envelopeLevel);
-    }
-    printf("\n");
+		if (env == 0)
+			continue;
 
-    printf("%16s", "Chn WavePosInt");
-    for (uint8_t k = 0; k < POLY_NUM; k++)
-    {
-        printf("%6d ", soundUnionList[k].combine.wavetablePos_int);
-    }
-    printf("\n");
+		int8_t sample = interpolate_sample(unit->split.wavetablePos_int,
+			unit->split.wavetablePos_frac);
+		mix += (int8_t)high_s8_u8(sample, env);
 
-    printf("%16s", "Chn WavePosFrac");
-    for (uint8_t k = 0; k < POLY_NUM; k++)
-    {
-        printf("%6d ", soundUnionList[k].combine.wavetablePos_frac);
-    }
-    printf("\n");
+		uint16_t pos = unit->split.wavetablePos_int;
+		uint16_t frac = (uint16_t)unit->split.wavetablePos_frac
+			+ unit->split.increment_frac;
 
-    printf("%16s", "Chn NoteIncrInt");
-    for (uint8_t k = 0; k < POLY_NUM; k++)
-    {
-        printf("%6d ", soundUnionList[k].split.increment_int);
-    }
-    printf("\n");
+		pos += unit->split.increment_int + (uint8_t)(frac >> 8);
+		if (pos >= WAVETABLE_LEN)
+			pos -= WAVETABLE_LOOP_LEN;
 
-    printf("%16s", "Chn NoteIncrFrac");
-    for (uint8_t k = 0; k < POLY_NUM; k++)
-    {
-        printf("%6d ", soundUnionList[k].split.increment_frac);
-    }
-    printf("\n");
+		unit->split.wavetablePos_frac = (uint8_t)frac;
+		unit->split.wavetablePos_int = pos;
+	}
+
+	synth->mixOut = mix;
+}
+
+static void copy_synth(Synthesizer *dst, Synthesizer *src)
+{
+	uint8_t i;
+
+	for (i = 0; i < POLY_NUM; i++)
+		dst->SoundUnitUnionList[i] = src->SoundUnitUnionList[i];
+	dst->mixOut = src->mixOut;
+	dst->lastSoundUnit = src->lastSoundUnit;
+	dst->lfsr = src->lfsr;
+}
+
+static void compare_synth_step(const char *name, Synthesizer *expected)
+{
+	uint8_t i;
+
+	ASSERT_EQ_I16(name, expected->mixOut, synthForAsm.mixOut);
+	for (i = 0; i < POLY_NUM; i++) {
+		SoundUnitUnion *want = &expected->SoundUnitUnionList[i];
+		SoundUnitUnion *got = &synthForAsm.SoundUnitUnionList[i];
+
+		ASSERT_EQ_U8("synth frac", want->split.wavetablePos_frac,
+			got->split.wavetablePos_frac);
+		ASSERT_EQ_U16("synth pos", want->split.wavetablePos_int,
+			got->split.wavetablePos_int);
+	}
 }
 
 void TestUpdateTickFunc(void)
 {
-    uint32_t i;
-    currentTick = 0;
+	uint8_t i;
 
-    printf("~~~~~~~Start testing updateTickFunc.~~~~~~~\n");
-    for (i = 0; i < 0xffff; i++)
-    {
-        if (i != currentTick)
-        {
-            printf("UpdateTickFunc get wrong in %ld loop. want:%ld, result:%ld\n", i, i, currentTick);
-            break;
-        }
-        UpdateTick();
-    }
-    if (i == currentTick)
-        printf("UpdateTickFunc passed the test.\n");
+	printf("TestUpdateTickFunc\n");
+	sysMsPre = 0;
+	sysMs = 0;
+
+	for (i = 0; i < 31; i++)
+		UpdateTick();
+	ASSERT_EQ_U8("pre before ms", 31, sysMsPre);
+	ASSERT_EQ_U16("ms before divide", 0, (uint16_t)sysMs);
+
+	UpdateTick();
+	ASSERT_EQ_U8("pre reset", 0, sysMsPre);
+	ASSERT_EQ_U16("ms increment", 1, (uint16_t)sysMs);
+
+	sysMsPre = 31;
+	sysMs = 0xffffffffUL;
+	UpdateTick();
+	ASSERT_EQ_U8("pre wrap reset", 0, sysMsPre);
+	ASSERT_TRUE("ms wrap", sysMs == 0);
 }
 
-uint8_t SynthParamterCompare(Synthesizer *synthA, Synthesizer *synthB)
+static void TestNoteOnAllocation(void)
 {
-    uint8_t error = 0;
-    SoundUnitUnion *sa = &(synthA->SoundUnitUnionList[0]);
-    SoundUnitUnion *sb = &(synthB->SoundUnitUnionList[0]);
+	uint8_t i;
 
-    if (abs_u16(synthA->mixOut - synthB->mixOut) > POLY_NUM)
-        error++;
-    for (uint8_t k = 0; k < POLY_NUM; k++)
-    {
-        if (abs_u16(sa[k].combine.val - sb[k].combine.val) > 2)
-        {
-            printf("SND ID:%d  Wrong chn value\n", k);
-            error++;
-            printf("SND ID:%d   C: ", k);
-            PrintMem((__xdata uint8_t *)&sa[k], sizeof(SoundUnitUnion));
-            printf("SND ID:%d ASM: ", k);
-            PrintMem((uint8_t *)&sb[k], sizeof(SoundUnitUnion));
-        }
-        if (sa[k].combine.sampleVal != sb[k].combine.sampleVal)
-        {
-            printf("SND ID:%d  Wrong sample value\n", k);
-            error++;
-            printf("SND ID:%d   C: ", k);
-            PrintMem((__xdata uint8_t *)&sa[k], sizeof(SoundUnitUnion));
-            printf("SND ID:%d ASM: ", k);
-            PrintMem((uint8_t *)&sb[k], sizeof(SoundUnitUnion));
-        }
-        if (sa[k].combine.envelopeLevel != sb[k].combine.envelopeLevel)
-        {
-            printf("SND ID:%d  Wrong envelopeLevel\n", k);
-            error++;
-            printf("SND ID:%d   C: ", k);
-            PrintMem((__xdata uint8_t *)&sa[k], sizeof(SoundUnitUnion));
-            printf("SND ID:%d ASM: ", k);
-            PrintMem((uint8_t *)&sb[k], sizeof(SoundUnitUnion));
-        }
-        if (sa[k].combine.wavetablePos_frac != sb[k].combine.wavetablePos_frac)
-        {
-            printf("SND ID:%d  Wrong wavetablePos_frac\n", k);
-            error++;
-            printf("SND ID:%d   C: ", k);
-            PrintMem((__xdata uint8_t *)&sa[k], sizeof(SoundUnitUnion));
-            printf("SND ID:%d ASM: ", k);
-            PrintMem((uint8_t *)&sb[k], sizeof(SoundUnitUnion));
-        }
-        if (sa[k].combine.wavetablePos_int != sb[k].combine.wavetablePos_int)
-        {
-            printf("SND ID:%d  Wrong wavetablePos_int\n", k);
-            error++;
-            printf("SND ID:%d   C: ", k);
-            PrintMem((__xdata uint8_t *)&sa[k], sizeof(SoundUnitUnion));
-            printf("SND ID:%d ASM: ", k);
-            PrintMem((uint8_t *)&sb[k], sizeof(SoundUnitUnion));
-        }
-        if (sa[k].combine.increment != sb[k].combine.increment)
-        {
-            printf("SND ID:%d  Wrong increment\n", k);
-            error++;
-            printf("SND ID:%d   C: ", k);
-            PrintMem((__xdata uint8_t *)&sa[k], sizeof(SoundUnitUnion));
-            printf("SND ID:%d ASM: ", k);
-            PrintMem((uint8_t *)&sb[k], sizeof(SoundUnitUnion));
-        }
-    }
-    if (error > 0)
-    {
-        printf("%d error(s) found:\n", error);
-        printf("Synth C:\n");
-        PrintParameters(synthA);
-        printf("Synth ASM:\n");
-        PrintParameters(synthB);
-    }
-    else
-    {
-        printf("Passed.\n");
-    }
-    return error;
+	printf("TestNoteOnAllocation\n");
+	reset_test_synth();
+
+	NoteOnAsm(60, 127);
+	ASSERT_EQ_U8("voice0 note", 60, voiceState[0].midiNote);
+	ASSERT_EQ_U8("voice0 vel", 254, voiceState[0].velocity);
+	ASSERT_EQ_U8("voice0 attack", ENV_STATE_ATTACK, voiceState[0].envelopeState);
+	ASSERT_EQ_U8("voice0 phase", 0, voiceState[0].envelopePhase);
+	ASSERT_EQ_U8("voice0 level", 0, synthForAsm.SoundUnitUnionList[0].split.envelopeLevel);
+	ASSERT_EQ_U16("voice0 inc", WaveTable_Increment[60],
+		synthForAsm.SoundUnitUnionList[0].combine.increment);
+
+	reset_test_synth();
+	for (i = 0; i < POLY_NUM; i++)
+		NoteOnAsm((uint8_t)(60 + i), 100);
+	for (i = 0; i < POLY_NUM; i++) {
+		ASSERT_EQ_U8("fill note", 60 + i, voiceState[i].midiNote);
+		ASSERT_EQ_U8("fill state", ENV_STATE_ATTACK, voiceState[i].envelopeState);
+	}
+
+	NoteOnAsm(90, 127);
+	ASSERT_EQ_U8("oldest stolen note", 90, voiceState[0].midiNote);
+	ASSERT_EQ_U8("oldest stolen state", ENV_STATE_ATTACK, voiceState[0].envelopeState);
 }
-extern void NoteOnAsmP(uint8_t n);
-extern void GenDecayEnvlopeAsmP(void);
 
-void TestSynth(void)
+static void TestNoteOffRelease(void)
 {
-    uint8_t tryNum = 3;
-    printf("~~~~~~~Start testing synthesizer.~~~~~~~\n");
-    for (uint8_t i = 0; i < POLY_NUM+1; i++)
-    {
-        NoteOnC(i * 2 + 80);
-        NoteOnAsm(i * 2 + 80);
-    }
-    for (uint16_t i = 0; i < TEST_LOOP_NUN; i++)
-    {
-        printf("ENV==========%d==============\n", i);
-        GenDecayEnvlopeAsm();
-        GenDecayEnvlopeC();
-        if ((SynthParamterCompare(&synthForC, &synthForAsm) > 0) && (tryNum--) == 0)
-            break;
-        for (uint8_t i = 0; i < 20; i++)
-        {
-            SynthAsm();
-            SynthC();
-        }
-        printf("SYNTH========%d==============\n", i);
-        if ((SynthParamterCompare(&synthForC, &synthForAsm) > 0) && (tryNum--) == 0)
-            break;
-    }
+	printf("TestNoteOffRelease\n");
+	reset_test_synth();
+
+	NoteOnAsm(64, 90);
+	NoteOnAsm(64, 120);
+	NoteOffAsm(64);
+	ASSERT_EQ_U8("release first", ENV_STATE_RELEASE, voiceState[0].envelopeState);
+	ASSERT_EQ_U8("release second", ENV_STATE_RELEASE, voiceState[1].envelopeState);
+	ASSERT_EQ_U8("short note precharge", ADSR_ENV_MAX >> 1, voiceState[0].envelopePhase);
+	ASSERT_EQ_U8("short note precharge 2", ADSR_ENV_MAX >> 1, voiceState[1].envelopePhase);
+
+	reset_test_synth();
+	NoteOnAsm(67, 80);
+	NoteOnAsm(67, 0);
+	ASSERT_EQ_U8("vel0 noteoff", ENV_STATE_RELEASE, voiceState[0].envelopeState);
+}
+
+static void TestAdsrStateMachine(void)
+{
+	printf("TestAdsrStateMachine\n");
+	reset_test_synth();
+	AdsrSetRates(64U << 8, 14U << 8, 0, 32U << 8);
+
+	NoteOnAsm(72, 127);
+	GenDecayEnvlopeAsm();
+	ASSERT_EQ_U8("attack phase 1", 64, voiceState[0].envelopePhase);
+	ASSERT_EQ_U8("attack state 1", ENV_STATE_ATTACK, voiceState[0].envelopeState);
+	ASSERT_EQ_U8("attack level 1", curve_level(64, 254),
+		synthForAsm.SoundUnitUnionList[0].split.envelopeLevel);
+
+	GenDecayEnvlopeAsm();
+	ASSERT_EQ_U8("attack reaches decay", ADSR_ENV_MAX, voiceState[0].envelopePhase);
+	ASSERT_EQ_U8("decay state", ENV_STATE_DECAY, voiceState[0].envelopeState);
+
+	GenDecayEnvlopeAsm();
+	ASSERT_EQ_U8("decay phase", 114, voiceState[0].envelopePhase);
+	ASSERT_EQ_U8("decay level", curve_level(114, 254),
+		synthForAsm.SoundUnitUnionList[0].split.envelopeLevel);
+
+	GenDecayEnvlopeAsm();
+	ASSERT_EQ_U8("sustain threshold", ADSR_SUSTAIN_THRESHOLD, voiceState[0].envelopePhase);
+	ASSERT_EQ_U8("sustain state", ENV_STATE_SUSTAIN, voiceState[0].envelopeState);
+
+	NoteOffAsm(72);
+	ASSERT_EQ_U8("release state", ENV_STATE_RELEASE, voiceState[0].envelopeState);
+	GenDecayEnvlopeAsm();
+	ASSERT_EQ_U8("release phase", 68, voiceState[0].envelopePhase);
+	GenDecayEnvlopeAsm();
+	GenDecayEnvlopeAsm();
+	GenDecayEnvlopeAsm();
+	ASSERT_EQ_U8("release silent", ENV_STATE_SILENT, voiceState[0].envelopeState);
+	ASSERT_EQ_U8("release level zero", 0,
+		synthForAsm.SoundUnitUnionList[0].split.envelopeLevel);
+}
+
+static void setup_synth_case(uint8_t idx, uint16_t pos, uint8_t frac,
+	uint16_t inc, uint8_t env)
+{
+	SoundUnitUnion *unit = &synthForAsm.SoundUnitUnionList[idx];
+
+	unit->combine.increment = inc;
+	unit->split.wavetablePos_frac = frac;
+	unit->split.wavetablePos_int = pos;
+	unit->split.envelopeLevel = env;
+}
+
+static void TestSynthAsmStep(void)
+{
+	printf("TestSynthAsmStep\n");
+	reset_test_synth();
+	setup_synth_case(0, 0, 0, 0x0100, 128);
+	copy_synth(&expectedSynth, &synthForAsm);
+	synth_reference_step(&expectedSynth);
+	SynthAsm();
+	compare_synth_step("single voice", &expectedSynth);
+
+	reset_test_synth();
+	setup_synth_case(0, 10, 128, 0x0180, 200);
+	setup_synth_case(1, 400, 64, 0x0040, 127);
+	copy_synth(&expectedSynth, &synthForAsm);
+	synth_reference_step(&expectedSynth);
+	SynthAsm();
+	compare_synth_step("multi voice", &expectedSynth);
+
+	reset_test_synth();
+	setup_synth_case(0, WAVETABLE_LEN - 1, 250, 0x020a, 255);
+	copy_synth(&expectedSynth, &synthForAsm);
+	synth_reference_step(&expectedSynth);
+	SynthAsm();
+	compare_synth_step("wrap voice", &expectedSynth);
 }
 
 void TestProcess(void)
 {
-    TestInit();
-    TestUpdateTickFunc();
-    TestSynth();
+	failures = 0;
+	printf("Synth core tests start\n");
+
+	TestUpdateTickFunc();
+	TestNoteOnAllocation();
+	TestNoteOffRelease();
+	TestAdsrStateMachine();
+	TestSynthAsmStep();
+
+	if (failures == 0)
+		printf("ALL TESTS PASSED\n");
+	else
+		printf("TESTS FAILED: %u\n", failures);
 }
+
 #endif

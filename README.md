@@ -175,17 +175,21 @@ Player does not know which backend is active — all `stream_*` calls go through
 
 ## Verification Suite
 
-A C-vs-Assembly comparison test framework is included for validating synthesis correctness:
+The core synthesizer has a `RUN_TEST` firmware self-test suite plus host-side serial tests. The self-tests validate the current production behavior: `UpdateTick`, voice allocation, NoteOff release, ADSR transitions, and the `SynthAsm` hot path against an independent C reference.
 
-```makefile
-# In Makefile: remove NO_RUN_TEST, add RUN_TEST
+```bash
+make clean DEFS="RUN_TEST STC8"
+make DEFS="RUN_TEST STC8"
+```
+
+For production and test build verification after shared changes:
+
+```bash
+make clean DEFS="RUN_TEST STC8" && make DEFS="RUN_TEST STC8"
 make clean && make
 ```
 
-The test feeds 9 notes, runs 10,000 iterations, and compares every voice field between the C and ASM implementations:
-- `mixOut` tolerance: ±8
-- `val` tolerance: ±2
-- All other fields: exact match required
+Full test details are documented in `docs/Testing.md`. Host-side ADSR/protocol tests are available through `tools/adsr_test.py` and `tools/musicbox_proto.py`.
 
 ## File Map
 
@@ -221,7 +225,9 @@ The test feeds 9 notes, runs 10,000 iterations, and compares every voice field b
 │   ├── WaveTable.{c,h}              Wavetable data + pitch increments
 │   ├── WaveTable.inc                Wavetable dimensions + constants (ASM)
 │   ├── EnvelopTable.{c,h}           256-entry non-linear velocity response curve
-│   ├── AlgorithmTest.c              C-vs-ASM verification suite (RUN_TEST only)
+│   ├── AlgorithmTest.c              RUN_TEST firmware self-tests
+│   ├── Synth_testbench.s            RUN_TEST wrapper for Synth.inc
+│   ├── UpdateTick_testbench.s       RUN_TEST wrapper for UpdateTick.inc
 │   └── 8051.inc                     SFR address constants
 │
 ├── tools/

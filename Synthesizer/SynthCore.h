@@ -111,10 +111,7 @@ extern void SynthEnvelopeTick(void);
 extern void SynthEnvReset(void);
 
 #ifdef RUN_TEST
-extern void NoteOnC(uint8_t note);
-extern void NoteOffC(uint8_t note);
-extern void SynthC(void);
-extern void GenDecayEnvlopeC(void);
+extern void SynthCoreTestReset(void);
 #endif
 
 extern void NoteOnAsm(uint8_t note, uint8_t velocity);

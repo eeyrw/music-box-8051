@@ -49,7 +49,6 @@ LIBDIR   =
 # user specific
 
 SRC 	+= main.c
-SRC 	+= Synthesizer/AlgorithmTest.c
 SRC 	+= Synthesizer/SynthCore.c
 SRC 	+= Player/Player.c
 SRC 	+= UartRedirect.c
@@ -64,12 +63,19 @@ SRC 	+= Storage_SPI.c
 SRC 	+= SpiFlash.c
 SRC 	+= scoreList.c
 
+ifneq ($(filter RUN_TEST,$(DEFS)),)
+SRC 	+= Synthesizer/AlgorithmTest.c
+endif
+
 ASM_SRC =
-ASM_SRC   += Synthesizer/PeriodTimer.s
 ASM_SRC   += Synthesizer/SynthCoreAsm.s
 
-# ASM_SRC   += Synthesizer/Synth_testbench.s
-# ASM_SRC   += Synthesizer/UpdateTick_testbench.s
+ifneq ($(filter RUN_TEST,$(DEFS)),)
+ASM_SRC   += Synthesizer/Synth_testbench.s
+ASM_SRC   += Synthesizer/UpdateTick_testbench.s
+else
+ASM_SRC   += Synthesizer/PeriodTimer.s
+endif
 
 INC_DIR  = $(patsubst %, -I%, $(INCLUDE_DIRS))
 AS_INC   = $(INC_DIR)
@@ -82,10 +88,13 @@ OTHER_OUTPUTS += $(ASM_SRC:.s=.asm) $(SRC:.c=.asm)
 OTHER_OUTPUTS += $(ASM_SRC:.s=.lst) $(SRC:.c=.lst)
 OTHER_OUTPUTS += $(ASM_SRC:.s=.rst) $(SRC:.c=.rst)
 OTHER_OUTPUTS += $(ASM_SRC:.s=.sym) $(SRC:.c=.sym)
+TEST_OBJECTS = Synthesizer/AlgorithmTest.rel Synthesizer/Synth_testbench.rel Synthesizer/UpdateTick_testbench.rel
+TEST_OUTPUTS = $(TEST_OBJECTS:.rel=.asm) $(TEST_OBJECTS:.rel=.lst) $(TEST_OBJECTS:.rel=.rst) $(TEST_OBJECTS:.rel=.sym)
+TEST_DEPS = Synthesizer/AlgorithmTest.d
 
 
 CFLAGS  = -m$(ARCH) -p$(MCU) --model-$(MODEL) --std-sdcc11
-CFLAGS += -DF_CPU=$(F_CPU)UL -I. -I$(LIBDIR) $(DDEFS) --stack-auto
+CFLAGS += -DF_CPU=$(F_CPU)UL -I. $(patsubst %, -I%, $(LIBDIR)) $(DDEFS) --stack-auto
 ASFLAGS  = $(AS_INC) -plosgff -l -s
 LD_FLAGS = -m$(ARCH) -l$(ARCH) --out-fmt-ihx -m$(MCU_MODEL) --model-$(MODEL) $(CODE_SIZE) $(IRAM_SIZE) $(XRAM_SIZE) --stack-auto
 
@@ -159,10 +168,12 @@ flash: $(PROJECT_NAME).ihx
 clean:
 	@echo [RM] OBJ
 	@-rm -rf $(OBJECTS)
+	@-rm -rf $(TEST_OBJECTS)
 	@echo [RM] HEX
 	@-rm -rf $(PROJECT_NAME).ihx
 	@echo [RM] Intermediate outputs
 	@-rm -rf $(OTHER_OUTPUTS)
+	@-rm -rf $(TEST_OUTPUTS)
 	@-rm -rf $(PROJECT_NAME).lk
 	@-rm -rf $(PROJECT_NAME).map	
 	@-rm -rf $(PROJECT_NAME).cdb	
@@ -170,3 +181,4 @@ clean:
 	@-rm -rf $(PROJECT_NAME).bin
 	@-rm -rf $(PROJECT_NAME).mem
 	@-rm -rf $(DEPS)
+	@-rm -rf $(TEST_DEPS)

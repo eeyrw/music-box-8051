@@ -6,6 +6,7 @@
 make              # production build (NO_RUN_TEST + STC8 defined)
 make clean
 make flash        # build + flash via stcgal
+make clean DEFS="RUN_TEST STC8" && make DEFS="RUN_TEST STC8"  # firmware self-test build
 ```
 
 SDCC toolchain for 8051 (C: `sdcc`, asm: `sdas8051`, hex packer: `packihx`). Outputs `.ihx` → `.hex` (via packihx) and `.bin` (via `sdobjcopy -O binary`).
@@ -246,13 +247,24 @@ python3 SSPL_Packer.py song1.mid song2.mid ... \
 
 ## Test / Verification
 
-To build the C-vs-ASM verification suite, edit Makefile `DEFS`: remove `NO_RUN_TEST`, add `RUN_TEST`. Then `main()` calls `TestProcess()` (see `AlgorithmTest.c`).
+Firmware self-tests are built with `RUN_TEST` and documented in `docs/Testing.md`:
 
-- `TestUpdateTickFunc()` — verifies 32-bit `sysMs` increment over 65535 calls
-- `TestSynth()` — feeds 9 notes, runs 10000 iterations comparing C and ASM synth paths
-- Tolerance: `mixOut` diff > 8 is an error; `val` diff > 2 is an error; all other fields must match exactly
+```bash
+make clean DEFS="RUN_TEST STC8"
+make DEFS="RUN_TEST STC8"
+```
 
-Test bench wrappers (`Synth_testbench.s`, `UpdateTick_testbench.s`) are **commented out** in Makefile — only needed if you re-enable the test suite.
+When `RUN_TEST` is defined, `main()` calls `TestProcess()` from `Synthesizer/AlgorithmTest.c`. The test firmware prints results over UART and ends with `ALL TESTS PASSED` or `TESTS FAILED: <count>`.
+
+Current firmware self-test coverage:
+
+- `TestUpdateTickFunc()` — verifies `sysMsPre` 32:1 prescaler, `sysMs` increment, and 32-bit wraparound
+- `TestNoteOnAllocation()` — verifies voice initialization, free-voice-first allocation, and default oldest-voice stealing
+- `TestNoteOffRelease()` — verifies same-note retrigger release, short-note precharge, and velocity-0 NoteOn as NoteOff
+- `TestAdsrStateMachine()` — verifies deterministic ADSR transitions and velocity-to-curve mapping
+- `TestSynthAsmStep()` — compares the `Synth.inc` assembly hot path against an independent C reference for interpolation, signed multiply, accumulation, phase advance, and wavetable wrap
+
+The Makefile automatically switches assembly sources for test builds: `Synth_testbench.s` and `UpdateTick_testbench.s` are compiled under `RUN_TEST`, while the real `PeriodTimer.s` ISR is compiled for production builds. Do not run production and `RUN_TEST` builds concurrently in one worktree because they share intermediate object paths.
 
 ## Architecture
 
@@ -529,9 +541,9 @@ Player (`Player.c`) uses `GetSysMs()` for:
 
 ## Assembly dependency tracking
 
-SDCC's assembler cannot auto-generate dependency files. Changes to `.inc` files will **not** trigger rebuilds unless the Makefile manual deps (lines 106-109) are updated to cover the changed `.inc` file. Always `make clean` after editing `.inc` files.
+SDCC's assembler cannot auto-generate dependency files. Changes to `.inc` files will **not** trigger rebuilds unless the Makefile manual deps (lines 114-117) are updated to cover the changed `.inc` file. Always `make clean` after editing `.inc` files.
 
-Note: the Makefile's `.d` generation (`Makefile:118`) uses `sed 's|^[^:]*:|$@:|'` to fix SDCC's `-MM` output which otherwise produces a truncated target name (source file instead of object file).
+Note: the Makefile's `.d` generation (`Makefile:126`) uses `sed 's|^[^:]*:|$@:|'` to fix SDCC's `-MM` output which otherwise produces a truncated target name (source file instead of object file). `LIBDIR` is expanded through `patsubst`, so an empty `LIBDIR` does not emit a bare `-I` that would swallow the first `-D` define.
 
 ## Files with duplicates / overlaps
 
@@ -554,6 +566,9 @@ Source code is organized into three modules:
 │   ├── Synth.inc           _SynthAsm — 8-voice ISR hot path (含抖动)
 │   ├── PeriodTimer.s       Timer0 ISR entry (bank 1, includes Synth+UpdateTick)
 │   ├── UpdateTick.inc      32-bit sysMs counter (ISR)
+│   ├── AlgorithmTest.c     RUN_TEST firmware self-tests
+│   ├── Synth_testbench.s   RUN_TEST callable wrapper for Synth.inc
+│   ├── UpdateTick_testbench.s RUN_TEST callable wrapper for UpdateTick.inc + ISR stub
 │   ├── WaveTable.{c,h,inc} Celesta C5 wavetable + pitch increment table
 │   └── EnvelopTable.{c,h}  256-entry decay envelope
 └── tools/                   Python CLI + boot tools

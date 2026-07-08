@@ -489,6 +489,8 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 flash-erase 0
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 flash-write 0 score.bin
 ```
 
+这些命令测试的是已刷入固件的串口交互行为。确定性的固件内核心测试使用 `RUN_TEST` 构建，覆盖 `UpdateTick`、声道分配、ADSR 状态机和 `SynthAsm` 热路径；详见 `docs/Testing.md`。
+
 ## 注意事项
 
 1. payload 中 LEN 硬上限为 252 (受限于 TX 缓冲区 264 字节: 1 SYNC + 1 应答CMD + 1 STATUS + 1 LEN + 252 DATA + 1 CSUM = 257 字节)。

@@ -13,10 +13,10 @@
 // ================================================================
 
 #define ADSR_TICK_MS              5
-#define ADSR_ATTACK_MS           10
-#define ADSR_DECAY_MS            30
-#define ADSR_RELEASE_MS         300
-#define ADSR_SUSTAIN_DECAY_MS    2000
+#define ADSR_ATTACK_MS           100
+#define ADSR_DECAY_MS            200
+#define ADSR_RELEASE_MS         240
+#define ADSR_SUSTAIN_DECAY_MS    0
 
 #define ADSR_ENV_MAX            128
 #define ADSR_SUSTAIN_THRESHOLD  100

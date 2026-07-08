@@ -57,6 +57,13 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-on 60   # trigger note
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-off 60  # release note
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 next
 
+# Fast note commands (no response, for low-latency playback)
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 fast-note-on 60 100
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 fast-note-off 60
+
+# Play MIDI files directly via fast-note protocol
+python3 tools/midi_player.py --port /dev/ttyUSB0 song.mid
+
 # SPI flash read/write
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 flash-info
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 flash-read 0x0000 256 | xxd
@@ -215,6 +222,7 @@ The test feeds 9 notes, runs 10,000 iterations, and compares every voice field b
 │
 ├── tools/
 │   ├── musicbox_proto.py            Full serial protocol CLI client
+│   ├── midi_player.py               Real-time MIDI playback via fast-note protocol
 │   ├── adsr_test.py                 ADSR envelope test suite
 │   └── boot.py                      Send soft-reset frame for make flash
 ```

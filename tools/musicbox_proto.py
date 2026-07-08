@@ -17,6 +17,8 @@ Commands:
   sysinfo                 Comprehensive system status (one-shot)
   note-on <NOTE> [VEL]    Trigger NoteOn (0-127), optional velocity 0-127
   note-off <NOTE>         Trigger NoteOff (MIDI note 0-127)
+  fast-note-on <NOTE> [VEL]  Fast NoteOn, no response (0-127), optional velocity 0-127
+  fast-note-off <NOTE>    Fast NoteOff, no response (MIDI note 0-127)
   play                    Start playback
   stop                    Stop playback
   prev                    Previous song
@@ -51,6 +53,8 @@ CMD_VOICE_DUMP     = 0x07
 CMD_SYS_INFO       = 0x08
 CMD_NOTE_ON        = 0x09
 CMD_NOTE_OFF       = 0x0A
+CMD_FAST_NOTE_ON   = 0x0B
+CMD_FAST_NOTE_OFF  = 0x0C
 CMD_PLAY           = 0x10
 CMD_STOP           = 0x11
 CMD_PREV           = 0x12
@@ -377,6 +381,15 @@ class MusicBoxClient:
         self._do_cmd(CMD_NOTE_OFF, struct.pack("B", note))
         print(f"NoteOff note={note}")
 
+    def fast_note_on(self, note, velocity=None):
+        payload = struct.pack("B", note)
+        if velocity is not None:
+            payload += struct.pack("B", velocity)
+        self._send_cmd(CMD_FAST_NOTE_ON, payload)
+
+    def fast_note_off(self, note):
+        self._send_cmd(CMD_FAST_NOTE_OFF, struct.pack("B", note))
+
     def adsr_get(self):
         data = self._do_cmd(CMD_ADSR_GET)
         (env_max, tick_ms, attack_step, decay_step, sustain_thr,
@@ -440,6 +453,15 @@ def main():
             if not args.args:
                 sys.exit("note-off requires a MIDI note argument (0-127)")
             client.note_off(int(args.args[0]))
+        elif cmd == "fast-note-on":
+            if not args.args:
+                sys.exit("fast-note-on requires a MIDI note argument (0-127)")
+            vel = int(args.args[1]) if len(args.args) > 1 else None
+            client.fast_note_on(int(args.args[0]), vel)
+        elif cmd == "fast-note-off":
+            if not args.args:
+                sys.exit("fast-note-off requires a MIDI note argument (0-127)")
+            client.fast_note_off(int(args.args[0]))
         elif cmd == "play":
             client.play()
         elif cmd == "stop":

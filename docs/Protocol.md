@@ -190,6 +190,23 @@ Voice 0 位于 data[0..12]，Voice 1 位于 data[13..25]，以此类推。
 
 ---
 
+#### CMD_FAST_NOTE_ON (0x0B) — 快速触发音符（无应答）
+
+- 负载: 1 字节 MIDI 音符编号 (0–127), 可选第 2 字节 velocity (0–127, 默认 127)
+- 应答: **无**
+- 行为: 同 `CMD_NOTE_ON`，但不返回任何应答帧。适合低延迟连续演奏（如 MIDI 播放器）。
+- 注意: payload 中若含 `0x5A` 时帧解析安全——接收端严格按 LEN 读取，不会误判为 SYNC。
+
+---
+
+#### CMD_FAST_NOTE_OFF (0x0C) — 快速释放音符（无应答）
+
+- 负载: 1 字节 — MIDI 音符编号 (0–127)
+- 应答: **无**
+- 行为: 同 `CMD_NOTE_OFF`，但不返回任何应答帧。适合低延迟连续演奏。
+
+---
+
 #### CMD_SYS_INFO (0x08) — 综合系统状态
 
 - 负载: 无
@@ -385,6 +402,8 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 <command> [args...]
 | `sysinfo` | — | 综合系统状态 (含 uptime/audio/song) |
 | `note-on` | `<NOTE> [VEL]` | 触发 NoteOn ATTACK (0–127, 可选力度 0–127) |
 | `note-off` | `<NOTE>` | 触发 NoteOff RELEASE (0–127) |
+| `fast-note-on` | `<NOTE> [VEL]` | 快速 NoteOn，无应答 (0–127, 可选力度 0–127) |
+| `fast-note-off` | `<NOTE>` | 快速 NoteOff，无应答 (0–127) |
 | `adsr-get` | — | ADSR 包络参数 (步进值 + 范围) |
 | `play` | — | 开始播放 |
 | `stop` | — | 停止播放 |
@@ -398,6 +417,21 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 <command> [args...]
 | `flash-erase-all` | — | 整片擦除 |
 | `flash-read` | `<ADDR> <LEN> [FILE]` | 读取 LEN 字节到 stdout 或文件 |
 | `flash-write` | `<ADDR> <INFILE>` | 将文件内容写入 ADDR |
+
+### MIDI 播放器
+
+`tools/midi_player.py` 通过 fast-note 协议实时播放标准 MIDI 文件：
+
+```bash
+# 播放 MIDI 文件（自动停止当前乐曲）
+python3 tools/midi_player.py --port /dev/ttyUSB0 song.mid
+
+# 移调（-12 = 低八度），力度缩放，只保留钢琴通道
+python3 tools/midi_player.py --port /dev/ttyUSB0 song.mid --transpose -12 --velocity 0.8 --channel 0
+
+# 限制音域（只播放 36-84 之间的音符）
+python3 tools/midi_player.py --port /dev/ttyUSB0 song.mid --note-min 36 --note-max 84
+```
 
 ### 示例
 
@@ -419,6 +453,10 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-on 60 80    # 触发 C5
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 voice            # 查看声道
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-off 60      # 释放 C5
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 adsr-get         # ADSR 参数
+
+# 快速音符（无应答，适合低延迟演奏）
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 fast-note-on 60 100
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 fast-note-off 60
 
 # SPI Flash 操作
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 flash-info

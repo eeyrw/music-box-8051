@@ -17,6 +17,8 @@
 #define CMD_SYS_INFO      0x08
 #define CMD_NOTE_ON       0x09
 #define CMD_NOTE_OFF      0x0A
+#define CMD_FAST_NOTE_ON  0x0B
+#define CMD_FAST_NOTE_OFF 0x0C
 
 #define CMD_PLAY          0x10
 #define CMD_STOP          0x11

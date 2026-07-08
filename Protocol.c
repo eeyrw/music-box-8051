@@ -448,6 +448,21 @@ static void dispatch_command(void)
 		break;
 	}
 
+	case CMD_FAST_NOTE_ON:
+	{
+		if (pkt_len < 1) break;
+		uint8_t vel = (pkt_len >= 2) ? pkt_data[1] : 127;
+		NoteOnAsm(pkt_data[0], vel);
+		break;
+	}
+
+	case CMD_FAST_NOTE_OFF:
+	{
+		if (pkt_len < 1) break;
+		NoteOffAsm(pkt_data[0]);
+		break;
+	}
+
 	case CMD_PLAY:
 		PlayerPlay(&mainPlayer);
 		send_response_ok(CMD_PLAY);

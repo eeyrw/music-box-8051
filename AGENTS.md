@@ -479,6 +479,8 @@ Full framed binary protocol documented in `Protocol.h`. Summary:
 | SYS_INFO | 0x08 | Comprehensive system status (uptime, backend, audio, voices, song, mode — 14 bytes) |
 | NOTE_ON | 0x09 | Trigger NoteOn with ADSR ATTACK (payload: 1 byte MIDI note, optional vel byte) |
 | NOTE_OFF | 0x0A | Trigger NoteOff → RELEASE (payload: 1 byte MIDI note) |
+| FAST_NOTE_ON | 0x0B | Fast NoteOn, no response (payload: 1 byte MIDI note, optional vel byte) |
+| FAST_NOTE_OFF | 0x0C | Fast NoteOff, no response (payload: 1 byte MIDI note) |
 | PLAY/STOP/PREV/NEXT | 0x10-13 | Playback control |
 | SET_SONG | 0x14 | Switch to song index |
 | GET_STATUS | 0x15 | Current song, playing state |
@@ -493,6 +495,10 @@ Frame format: `SYNC(0x5A) | CMD | LEN | [PAYLOAD] | CHECKSUM`
 Response: `SYNC(0x5A) | CMD\|0x80 | STATUS | LEN | [DATA] | CHECKSUM`
 
 Python CLI: `tools/musicbox_proto.py --port /dev/ttyUSB0 <command> [args...]`
+
+**Fast note test**: 发送 `fast-note-on`/`fast-note-off` 前必须先 `stop` 停止乐曲播放，否则播放器调度的事件会干扰测试音符。测试完成后可用 `ping` 验证板子仍正常响应。
+
+### Fast Note On/Off (0x0B / 0x0C)
 
 ### Protocol reliability fixes (2026-07)
 

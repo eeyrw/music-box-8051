@@ -56,7 +56,6 @@ SRC 	+= UartRedirect.c
 SRC 	+= Bsp.c
 SRC 	+= Protocol.c
 SRC 	+= Synthesizer/WaveTable.c
-SRC 	+= Synthesizer/EnvelopTable.c
 
 # Storage backends (both always compiled)
 SRC 	+= Storage.c

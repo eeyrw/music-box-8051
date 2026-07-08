@@ -519,11 +519,11 @@ static void dispatch_command(void)
 		uint8_t buf[7];
 		buf[0] = ADSR_ENV_MAX;
 		buf[1] = ADSR_TICK_MS;
-		buf[2] = ADSR_ATTACK_RATE;
-		buf[3] = ADSR_DECAY_RATE;
+		buf[2] = (uint8_t)(AdsrAttackRateFrac / ADSR_FRAC_DEN);
+		buf[3] = (uint8_t)(AdsrDecayRateFrac / ADSR_FRAC_DEN);
 		buf[4] = ADSR_SUSTAIN_THRESHOLD;
-		buf[5] = (uint8_t)(ADSR_SUSTAIN_DECAY_RATE_FRAC);
-		buf[6] = ADSR_RELEASE_RATE;
+		buf[5] = (uint8_t)(AdsrSustainDecayRateFrac);
+		buf[6] = (uint8_t)(AdsrReleaseRateFrac / ADSR_FRAC_DEN);
 		send_data_response(CMD_ADSR_GET, STATUS_OK, buf, 7);
 		break;
 	}

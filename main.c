@@ -24,6 +24,7 @@ void main()
 {
 	PlayerInit(&mainPlayer, &synthForAsm);
 	HardwareInit();
+	AdsrInit();
 	Proto_Init();
 
 #ifndef RUN_TEST

@@ -279,7 +279,7 @@ while (1) {
 - Player 使用 `GetSysMs()` 驱动乐谱事件调度和包络衰减
 - 乐谱 delta (raw tick) × 8 = 毫秒 (TickPerSecond=125, 1000/125=8ms/tick)
 - **包络 tick**: 每 `ADSR_TICK_MS` (5ms) 调用 `GenDecayEnvlopeAsm`, 使用 `nextTickMs` 相位锁定累加器 (不受主循环忙闲漂移影响)
-- ADSR 阶段时长由 `SynthCore.h` 宏 (`ADSR_ATTACK_MS=30`, `ADSR_DECAY_MS=60`, `ADSR_RELEASE_MS=200`) 控制，步进值编译期推导
+- ADSR 阶段时长由 `SynthCore.h` 宏 (`ADSR_ATTACK_MS=20`, `ADSR_DECAY_MS=60`, `ADSR_RELEASE_MS=100`) 控制，步进值编译期推导
 
 ### Fixed memory layout (critical — do not change blindly)
 
@@ -329,8 +329,8 @@ After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), opt
 **ADSR constants** (`SynthCore.h`):
 - `ADSR_TICK_MS=5` (tick 间隔 ms, 控制 `Player.c` 相位锁定环)
 - `ADSR_ENV_MAX=128` (内部 env 范围)
-- `ADSR_ATTACK_MS=30, ADSR_DECAY_MS=60, ADSR_RELEASE_MS=400` (阶段时长)
-- Step 值编译期从时长推导: 8.8 定点数 `*_RATE_FRAC`（分子×256），`envelopeFrac` 每 tick 累加，进位驱动 envelopePhase 增减
+- `ADSR_ATTACK_MS=20, ADSR_DECAY_MS=60, ADSR_RELEASE_MS=100` (阶段时长)
+- Step 值编译期从时长推导为 8.8 定点  `*_RATE_FRAC`，存储为 `__xdata uint16_t` 运行时变量（由 `AdsrInit()` 在 `main()` 启动时初始化），`envelopeFrac` 每 tick 累加，进位驱动 envelopePhase 增减
 - `ADSR_SUSTAIN_THRESHOLD=100` (decay 目标, 78% of max)
 - `ADSR_SUSTAIN_DECAY_MS` (Sustain 衰减时长 ms, 0=平坦; 默认 0)
 - Non-linear curve: 三种曲线可选 via `VELOCITY_CURVE` 宏 (默认: -20dB log 表, 128 条)
@@ -343,9 +343,23 @@ typedef struct _VoiceState {
     uint8_t envelopeState;  // 2: SILENT/ATTACK/DECAY/SUSTAIN/RELEASE
     uint8_t envelopePhase;  // 3: 当前 env 值 (0-128)
     uint8_t envelopeFrac;   // 4: 8.8 定点小数累加器 (1/256 分辨率)
-    uint8_t reserved;       // 5: 分配时间戳 (FIFO steal 用)
+    uint8_t allocStamp;     // 5: 分配时间戳 (FIFO steal 用)
 } VoiceState;
 ```
+
+### Voice stealing strategies (2026-07)
+
+Five strategies selectable via `#define NOTEON_STEAL_STRATEGY` in `SynthCore.h:47`:
+
+| Value | Macro | Behavior |
+|-------|-------|----------|
+| 0 | `VOICE_STEAL_OLDEST` | Steal the voice with the oldest `allocStamp` (default) |
+| 1 | `VOICE_STEAL_QUIETEST` | Steal the voice with the lowest `envelopeLevel` |
+| 2 | `VOICE_STEAL_NEWEST` | Steal the voice with the newest `allocStamp` |
+| 3 | `VOICE_STEAL_HIGHEST_NOTE` | Steal the highest-pitched note (largest `midiNote`) |
+| 4 | `VOICE_STEAL_LOWEST_NOTE` | Steal the lowest-pitched note (smallest `midiNote`) |
+
+`stealVoice()` 在 `SynthCore.c` 中用五个 `#if`/`#endif` 块实现。默认为 `VOICE_STEAL_OLDEST`。
 
 ### Dithering (2026-07)
 
@@ -439,8 +453,8 @@ State machine: `READY_TO_SWITCH` → `SWITCHING` → `SCORE_PREV/NEXT` → `READ
 **Free-voice-first + Timestamp FIFO steal** across 8 voices. `NoteOnAsm` (`SynthCore.c`):
 
 1. Phase A: scan all 8 voices for `voiceState[].envelopeState == SILENT` (XRAM) — reuse immediately
-2. Phase B: if none free, call `stealOldest()` — compare `voiceState[].reserved` (allocation timestamp) in circular uint8_t time, steal the oldest
-3. `voiceState[idx].reserved = ++alloc_stamp` (inside `EA=0`/`EA=1` critical section)
+2. Phase B: if none free, call `stealVoice()` — strategy selected by `NOTEON_STEAL_STRATEGY` macro (default: steal oldest `allocStamp`)
+3. `voiceState[idx].allocStamp = ++alloc_stamp` (inside `EA=0`/`EA=1` critical section)
 
 The voice write (zeroing phase, setting `envelopeLevel=0` for ATTACK start) is inside `EA=0`/`EA=1` critical section. The free-voice scan runs outside the critical section since `envelopeState` is only set to SILENT in main-loop context (`GenDecayEnvlopeAsm` / `SynthReleaseAllAsm`), not in ISR.
 
@@ -510,6 +524,8 @@ Player (`Player.c`) uses `GetSysMs()` for:
 ## Assembly dependency tracking
 
 SDCC's assembler cannot auto-generate dependency files. Changes to `.inc` files will **not** trigger rebuilds unless the Makefile manual deps (lines 106-109) are updated to cover the changed `.inc` file. Always `make clean` after editing `.inc` files.
+
+Note: the Makefile's `.d` generation (`Makefile:118`) uses `sed 's|^[^:]*:|$@:|'` to fix SDCC's `-MM` output which otherwise produces a truncated target name (source file instead of object file).
 
 ## Files with duplicates / overlaps
 

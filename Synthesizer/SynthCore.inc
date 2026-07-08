@@ -67,7 +67,7 @@
 ;   2: envelopeState
 ;   3: envelopePhase  (att/dec/sus/rel: 当前 env 值 0-128)
 ;   4: envelopeFrac   (8.8 定点小数累加器)
-;   5: reserved       (FIFO 时间戳)
+;   5: allocStamp     (FIFO 时间戳)
 	vState_midiNote=0
 	vState_velocity=1
 	vState_envState=2

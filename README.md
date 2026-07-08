@@ -116,7 +116,7 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 
 ### Voice allocation
 
-**Free-voice-first + Timestamp FIFO steal** across 8 voices. NoteOn scans for `voiceState[].envelopeState == SILENT` (XRAM), reuses immediately. If all 8 busy, `stealOldest()` compares `voiceState[].reserved` allocation timestamps (circular uint8_t) to find and replace the earliest-allocated note. Voice writes are inside `EA=0`/`EA=1` critical section to prevent ISR data races. NoteOff sets `envelopeState = RELEASE` for all matching voices; if `envelopePhase == 0` (before first envelope tick), pre-charges to `ADSR_ENV_MAX/2` to prevent silent staccato notes. Stop/EndOfScore calls `SynthReleaseAllAsm` which zeroes all envelopes and sets state=SILENT.
+**Free-voice-first + configurable steal strategy** across 8 voices. NoteOn scans for `voiceState[].envelopeState == SILENT` (XRAM), reuses immediately. If all 8 busy, `stealVoice()` applies the strategy selected by `NOTEON_STEAL_STRATEGY` (default: steal oldest `allocStamp`). Five strategies available: oldest, quietest, newest, highest note, lowest note. Voice writes are inside `EA=0`/`EA=1` critical section to prevent ISR data races. NoteOff sets `envelopeState = RELEASE` for all matching voices; if `envelopePhase == 0` (before first envelope tick), pre-charges to `ADSR_ENV_MAX/2` to prevent silent staccato notes. Stop/EndOfScore calls `SynthReleaseAllAsm` which zeroes all envelopes and sets state=SILENT.
 
 ### Score format — SSPL + SSCR
 

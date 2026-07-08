@@ -15,28 +15,20 @@
 #define ADSR_TICK_MS              5
 #define ADSR_ATTACK_MS           20
 #define ADSR_DECAY_MS            60
-#define ADSR_RELEASE_MS         100
-#define ADSR_SUSTAIN_DECAY_MS     0
+#define ADSR_RELEASE_MS         200
+#define ADSR_SUSTAIN_DECAY_MS    5000
 
 #define ADSR_ENV_MAX            128
 #define ADSR_SUSTAIN_THRESHOLD  100
 
 #define ADSR_FRAC_DEN  256
 
-// 编译期推导: 8.8 定点步进值 (rate_frac / 256 = 每 tick 的实际增量)
-#define ADSR_ATTACK_RATE   ((ADSR_ENV_MAX * ADSR_TICK_MS + ADSR_ATTACK_MS - 1) / ADSR_ATTACK_MS)
-#define ADSR_DECAY_DELTA   (ADSR_ENV_MAX - ADSR_SUSTAIN_THRESHOLD)
-#define ADSR_DECAY_RATE    ((ADSR_DECAY_DELTA * ADSR_TICK_MS + ADSR_DECAY_MS - 1) / ADSR_DECAY_MS)
-#define ADSR_RELEASE_RATE  1
+extern __xdata uint16_t AdsrAttackRateFrac;
+extern __xdata uint16_t AdsrDecayRateFrac;
+extern __xdata uint16_t AdsrReleaseRateFrac;
+extern __xdata uint16_t AdsrSustainDecayRateFrac;
 
-#define ADSR_ATTACK_RATE_FRAC   ((uint16_t)(ADSR_ATTACK_RATE) * ADSR_FRAC_DEN)
-#define ADSR_DECAY_RATE_FRAC    ((uint16_t)(ADSR_DECAY_RATE) * ADSR_FRAC_DEN)
-#define ADSR_RELEASE_RATE_FRAC  ((uint16_t)(ADSR_RELEASE_RATE) * ADSR_FRAC_DEN)
-#if ADSR_SUSTAIN_DECAY_MS > 0
-#define ADSR_SUSTAIN_DECAY_RATE_FRAC  ((uint16_t)(((uint32_t)ADSR_SUSTAIN_THRESHOLD * ADSR_TICK_MS * ADSR_FRAC_DEN + ADSR_SUSTAIN_DECAY_MS - 1) / ADSR_SUSTAIN_DECAY_MS))
-#else
-#define ADSR_SUSTAIN_DECAY_RATE_FRAC  0
-#endif
+void AdsrInit(void);
 
 // ---- ADSR 包络状态 ----
 #define ENV_STATE_SILENT  0
@@ -44,6 +36,15 @@
 #define ENV_STATE_DECAY   2
 #define ENV_STATE_SUSTAIN 3
 #define ENV_STATE_RELEASE 4
+
+// ---- Voice Stealing Strategy (Phase B fallback when all voices busy) ----
+#define VOICE_STEAL_OLDEST       0   // FIFO timestamp: steal oldest-allocated voice
+#define VOICE_STEAL_QUIETEST     1   // Envelope level: steal quietest voice
+#define VOICE_STEAL_NEWEST       2   // FIFO timestamp: steal most-recently-allocated voice
+#define VOICE_STEAL_HIGHEST_NOTE 3   // MIDI note: steal highest pitch (less perceptually missed)
+#define VOICE_STEAL_LOWEST_NOTE  4   // MIDI note: steal lowest pitch
+
+#define NOTEON_STEAL_STRATEGY VOICE_STEAL_QUIETEST
 
 // ---- 力度曲线选择 ----
 #define VEL_CURVE_POWER2  0
@@ -96,7 +97,7 @@ typedef struct _VoiceState
 	uint8_t envelopeState;
 	uint8_t envelopePhase;
 	uint8_t envelopeFrac;
-	uint8_t reserved;
+	uint8_t allocStamp;
 } VoiceState;
 
 extern __xdata VoiceState voiceState[POLY_NUM];

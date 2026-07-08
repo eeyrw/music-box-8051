@@ -115,7 +115,7 @@ endif
 %.rel: %.c Makefile
 	@echo [CC] $(notdir $<)
 # Output dependency
-	@$(CC) $(CFLAGS) $(INC_DIR) -MM -c $< > $(patsubst %.c,%.d,$<)
+	@$(CC) $(CFLAGS) $(INC_DIR) -MM -c $< | sed 's|^[^:]*:|$@:|' > $(patsubst %.c,%.d,$<)
 # Do compiling
 	@$(CC) $(CFLAGS) $(INC_DIR) -c $< -o $@
 	

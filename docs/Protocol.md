@@ -274,14 +274,18 @@ Offset | Size | 内容
 Offset | Size | 内容
    0   |  1   | ADSR_ENV_MAX (内部 env 范围, 128)
    1   |  1   | ADSR_TICK_MS (包络更新间隔, 5ms)
-   2   |  1   | ADSR_ATTACK_RATE (Attack 步进值, 整数)
-   3   |  1   | ADSR_DECAY_RATE  (Decay 步进值, 整数)
-   4   |  1   | ADSR_SUSTAIN_THRESHOLD (Sustain 起始阈值)
-   5   |  1   | ADSR_SUSTAIN_DECAY_RATE_FRAC (Sustain 衰减率 8.8 定点, 0=平坦, 256=1.0/tick)
-   6   |  1   | ADSR_RELEASE_RATE (Release 步进值，整数)
+   2   |  1   | ADSR_ATTACK_RATE_FRAC_H (Attack 步进值 8.8 定点, 高字节)
+   3   |  1   | ADSR_ATTACK_RATE_FRAC_L (Attack 步进值 8.8 定点, 低字节)
+   4   |  1   | ADSR_DECAY_RATE_FRAC_H (Decay 步进值 8.8 定点, 高字节)
+   5   |  1   | ADSR_DECAY_RATE_FRAC_L (Decay 步进值 8.8 定点, 低字节)
+   6   |  1   | ADSR_SUSTAIN_THRESHOLD (Sustain 起始阈值)
+   7   |  1   | ADSR_SUSTAIN_DECAY_RATE_FRAC_H (Sustain 衰减率 8.8 定点, 高字节)
+   8   |  1   | ADSR_SUSTAIN_DECAY_RATE_FRAC_L (Sustain 衰减率 8.8 定点, 低字节)
+   9   |  1   | ADSR_RELEASE_RATE_FRAC_H (Release 步进值 8.8 定点, 高字节)
+  10   |  1   | ADSR_RELEASE_RATE_FRAC_L (Release 步进值 8.8 定点, 低字节)
 ```
 
-实际阶段时长可由 `ceil(幅度/步进) × TICK_MS` 计算。Sustain 衰减率使用 8.8 定点小数：`rate = byte5 / 256`（单位 envelope/tick），通过 `SynthCore.h` 的 `ADSR_SUSTAIN_DECAY_MS` 宏配置（如 2000ms → FRAC=64 → rate=0.25/tick）。
+实际阶段时长可由 `ceil(幅度/步进) × TICK_MS` 计算。Sustain 衰减率使用 8.8 定点小数：`rate = raw / 256`（单位 envelope/tick），通过 `SynthCore.h` 的 `ADSR_SUSTAIN_DECAY_MS` 宏配置（如 2000ms → FRAC=64 → rate=0.25/tick）。所有 `*_RATE_FRAC` 值为 `__xdata uint16_t` 运行时变量，由 `AdsrInit()` 在 `main()` 启动时根据 MS 时长宏初始化。
 
 ---
 

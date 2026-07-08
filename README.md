@@ -123,7 +123,9 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 
 ### Runtime ADSR tuning
 
-The serial protocol exposes ADSR rates as 11 bytes: `ENV_MAX`, `TICK_MS`, four 16-bit big-endian 8.8 rate fields, and `SUSTAIN_THRESHOLD`. `adsr-get` prints both raw rates and effective durations; `adsr-set ATTACK_MS DECAY_MS SUSTAIN_DECAY_MS RELEASE_MS` converts millisecond durations to the same 8.8 format. Attack must be at least `0x0100`, decay and release must be non-zero, every non-zero rate must be `<= 0xFF00`, and `SUSTAIN_DECAY_MS=0` keeps sustain flat. Runtime changes are not persisted and are reset by reboot or reflashing. Detailed formulas are documented in `docs/Protocol.md`.
+The serial protocol exposes ADSR rates as 11 bytes: `ENV_MAX`, `TICK_MS`, four 16-bit big-endian 8.8 rate fields, and `SUSTAIN_THRESHOLD`. `adsr-get` prints both raw rates and effective durations; `adsr-set ATTACK_MS DECAY_MS SUSTAIN_DECAY_MS RELEASE_MS` converts millisecond durations to the same 8.8 format. Attack must be at least `0x0100`, decay and release must be non-zero, every non-zero rate must be `<= 0xFF00`, and `SUSTAIN_DECAY_MS=0` keeps sustain flat. Runtime changes are not persisted and are reset by reboot or reflashing.
+
+For interactive tuning, run `python3 tools/adsr_web.py` and open the Web Serial editor in Chrome/Edge. The editor connects to the CH340 (`1A86:7523`), reads current ADSR parameters automatically after selection, displays the envelope with grid/time axes, and writes the same serial `ADSR_SET` payload as the CLI. Detailed formulas are documented in `docs/Protocol.md`.
 
 ### Voice allocation
 
@@ -234,7 +236,15 @@ Full test details are documented in `docs/Testing.md`. Host-side ADSR/protocol t
 │   ├── musicbox_proto.py            Full serial protocol CLI client
 │   ├── midi_player.py               Real-time MIDI playback via fast-note protocol
 │   ├── adsr_test.py                 ADSR envelope test suite
+│   ├── adsr_web.py                  Launch Web Serial ADSR editor
+│   ├── adsr_web.html                Web Serial ADSR editor
 │   └── boot.py                      Send soft-reset frame for make flash
+```
+
+Web ADSR editor:
+
+```bash
+python3 tools/adsr_web.py
 ```
 
 ## License

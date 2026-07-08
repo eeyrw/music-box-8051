@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Music Box ADSR Editor</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #172026;
+      --muted: #61707c;
+      --soft: #eef3f5;
+      --line: #d8dee4;
+      --accent: #0b6f6a;
+      --accent-2: #264653;
+      --danger: #b42318;
+      --ok: #247a3b;
+      --shadow: 0 12px 30px rgba(28, 39, 49, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .app {
+      width: min(1120px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0 32px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      min-height: 32px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #9aa6b2;
+      flex: 0 0 auto;
+    }
+
+    .dot.connected { background: var(--ok); }
+    .dot.error { background: var(--danger); }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--ink);
+      min-height: 38px;
+      padding: 0 14px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      padding: 0 12px;
+      min-height: 38px;
+      color: var(--muted);
+    }
+
+    .toggle input { margin: 0; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .envelope {
+      padding: 16px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 280px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfcfd;
+    }
+
+    .params {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .row {
+      display: grid;
+      gap: 8px;
+      min-height: 72px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+
+    .row-head {
+      display: grid;
+      grid-template-columns: minmax(160px, 1fr) 112px 94px;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .label {
+      font-weight: 650;
+      color: var(--accent-2);
+    }
+
+    .hint {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .input-unit {
+      position: relative;
+    }
+
+    .input-unit input {
+      padding-right: 34px;
+    }
+
+    .input-unit span {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    input[type="number"] {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 8px;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    .rate {
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .rate strong {
+      display: block;
+      color: var(--ink);
+      font-weight: 650;
+    }
+
+    .side {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      color: var(--muted);
+    }
+
+    .section-title {
+      margin: 2px 0 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent-2);
+      text-transform: uppercase;
+    }
+
+    .note {
+      padding: 10px;
+      border-radius: 6px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .kv strong {
+      color: var(--ink);
+      font-weight: 650;
+    }
+
+    .log {
+      height: 220px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #111820;
+      color: #d9e2ea;
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 860px) {
+      .app { width: min(100vw - 20px, 720px); padding-top: 14px; }
+      header { align-items: flex-start; flex-direction: column; }
+      .grid { grid-template-columns: 1fr; }
+      .row-head { grid-template-columns: 1fr; gap: 6px; }
+      .rate { text-align: left; }
+      canvas { height: 220px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>Music Box ADSR Editor</h1>
+        <div class="subtitle">调整包络阶段时长，数值会转换为固件使用的 8.8 fixed-point rate。</div>
+      </div>
+      <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">未连接</span></div>
+    </header>
+
+    <div class="toolbar">
+      <button id="connectBtn" class="primary">连接串口</button>
+      <button id="reloadBtn" disabled>读取</button>
+      <button id="applyBtn" disabled>应用</button>
+      <button id="flatBtn" disabled>Sustain Flat</button>
+      <label class="toggle"><input id="liveToggle" type="checkbox" disabled> Live</label>
+    </div>
+
+    <section class="grid">
+      <div class="panel envelope">
+        <canvas id="plot" width="900" height="320" aria-label="ADSR envelope preview"></canvas>
+        <div class="params" id="params"></div>
+      </div>
+
+      <aside class="panel side">
+        <div class="section-title">Device</div>
+        <div class="kv"><span>ENV_MAX</span><strong id="envMax">-</strong></div>
+        <div class="kv"><span>Envelope Tick</span><strong id="tickMs">-</strong></div>
+        <div class="kv"><span>Sustain Level</span><strong id="sustainThr">-</strong></div>
+        <div class="section-title">Protocol</div>
+        <div class="kv"><span>Payload</span><strong id="payloadHex">-</strong></div>
+        <div class="note">参数不会写入 Flash，复位后会恢复固件默认值。Live 模式会在每次编辑后立即发送 ADSR_SET。</div>
+        <div class="section-title">Log</div>
+        <div class="log" id="log"></div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const SYNC = 0x5A;
+    const RSP_FLAG = 0x80;
+    const CMD_ADSR_GET = 0x30;
+    const CMD_ADSR_SET = 0x31;
+    const STATUS_OK = 0x00;
+
+    const fields = [
+      { key: 'attack', label: 'Attack', max: 5000, hint: 'Note On 后从 0 上升到 ENV_MAX 的时间。' },
+      { key: 'decay', label: 'Decay', max: 5000, hint: 'Attack 后下降到 Sustain Level 的时间。' },
+      { key: 'sustainDecay', label: 'Sustain Decay', max: 10000, hint: 'Sustain 阶段继续衰减到 0 的时间；0 ms 表示保持平坦。' },
+      { key: 'release', label: 'Release', max: 5000, hint: 'Note Off 后从当前包络释放到 0 的时间。' },
+    ];
+
+    const state = {
+      port: null,
+      reader: null,
+      writer: null,
+      envMax: 128,
+      tickMs: 5,
+      sustainThr: 100,
+      rates: { attack: 0, decay: 0, sustainDecay: 0, release: 0 },
+      durations: { attack: 0, decay: 0, sustainDecay: 0, release: 0 },
+      busy: false,
+      rx: [],
+      disconnecting: false,
+    };
+
+    const els = {
+      connectBtn: document.getElementById('connectBtn'),
+      reloadBtn: document.getElementById('reloadBtn'),
+      applyBtn: document.getElementById('applyBtn'),
+      flatBtn: document.getElementById('flatBtn'),
+      liveToggle: document.getElementById('liveToggle'),
+      statusDot: document.getElementById('statusDot'),
+      statusText: document.getElementById('statusText'),
+      params: document.getElementById('params'),
+      plot: document.getElementById('plot'),
+      envMax: document.getElementById('envMax'),
+      tickMs: document.getElementById('tickMs'),
+      sustainThr: document.getElementById('sustainThr'),
+      payloadHex: document.getElementById('payloadHex'),
+      log: document.getElementById('log'),
+    };
+
+    function checksum(bytes) {
+      return bytes.reduce((sum, b) => sum ^ b, 0);
+    }
+
+    function buildFrame(cmd, payload = new Uint8Array()) {
+      const frame = new Uint8Array(4 + payload.length);
+      frame[0] = SYNC;
+      frame[1] = cmd;
+      frame[2] = payload.length;
+      frame.set(payload, 3);
+      frame[3 + payload.length] = checksum([...frame.slice(1, 3), ...payload]);
+      return frame;
+    }
+
+    async function readExact(length, timeoutMs = 3000) {
+      const out = [];
+      const deadline = performance.now() + timeoutMs;
+      while (out.length < length) {
+        while (state.rx.length && out.length < length) out.push(state.rx.shift());
+        if (out.length >= length) break;
+        const remaining = deadline - performance.now();
+        if (remaining <= 0) throw new Error('串口读取超时');
+        const result = await Promise.race([
+          state.reader.read(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('串口读取超时')), remaining)),
+        ]);
+        if (result.done) throw new Error('串口已断开');
+        state.rx.push(...result.value);
+      }
+      return new Uint8Array(out.slice(0, length));
+    }
+
+    async function readFrame() {
+      let b;
+      do {
+        b = (await readExact(1))[0];
+      } while (b !== SYNC);
+      const head = await readExact(3);
+      const rspCmd = head[0];
+      const status = head[1];
+      const len = head[2];
+      const rest = await readExact(len + 1);
+      const payload = rest.slice(0, len);
+      const got = rest[len];
+      const calc = checksum([rspCmd, status, len, ...payload]);
+      if (got !== calc) throw new Error(`响应校验失败 got=0x${hex8(got)} calc=0x${hex8(calc)}`);
+      if ((rspCmd & RSP_FLAG) === 0) throw new Error('收到的不是响应帧');
+      return { cmd: rspCmd & ~RSP_FLAG, status, payload };
+    }
+
+    async function openPortSession() {
+      if (!state.port) throw new Error('串口未连接');
+      await state.port.open({
+        baudRate: 115200,
+        dataBits: 8,
+        stopBits: 1,
+        parity: 'none',
+        flowControl: 'none',
+        bufferSize: 255,
+      });
+      state.reader = state.port.readable.getReader();
+      state.writer = state.port.writable.getWriter();
+      state.rx = [];
+    }
+
+    async function closePortSession(cancelRead = false) {
+      if (state.reader) {
+        if (cancelRead) await state.reader.cancel().catch(() => {});
+        state.reader.releaseLock();
+        state.reader = null;
+      }
+      if (state.writer) {
+        state.writer.releaseLock();
+        state.writer = null;
+      }
+      if (state.port) await state.port.close().catch(() => {});
+      state.rx = [];
+    }
+
+    async function command(cmd, payload = new Uint8Array()) {
+      if (!state.port) throw new Error('串口未连接');
+      let completed = false;
+      try {
+        await openPortSession();
+        await state.writer.write(buildFrame(cmd, payload));
+        const rsp = await readFrame();
+        if (rsp.cmd !== cmd) throw new Error(`响应命令不匹配 0x${hex8(rsp.cmd)} != 0x${hex8(cmd)}`);
+        if (rsp.status !== STATUS_OK) throw new Error(`设备返回错误状态 0x${hex8(rsp.status)}`);
+        completed = true;
+        return rsp.payload;
+      } catch (error) {
+        if (isDeviceLostError(error)) {
+          await cleanupLostPort();
+        }
+        throw error;
+      } finally {
+        if (state.port) await closePortSession(!completed);
+      }
+    }
+
+    function rateFrac(distance, durationMs) {
+      if (durationMs <= 0) return 0;
+      return Math.min(0xFFFF, Math.max(1, Math.ceil(distance * state.tickMs * 256 / durationMs)));
+    }
+
+    function durationMs(distance, rate) {
+      if (rate === 0) return 0;
+      return Math.ceil(distance * 256 / rate) * state.tickMs;
+    }
+
+    function distance(key) {
+      if (key === 'attack' || key === 'release') return state.envMax;
+      if (key === 'decay') return state.envMax - state.sustainThr;
+      return state.sustainThr;
+    }
+
+    function clampDuration(key, value) {
+      if (key === 'sustainDecay' && value <= 0) return 0;
+      const minRate = key === 'attack' ? 0x0100 : 1;
+      const d = distance(key);
+      const minMs = Math.max(1, Math.ceil(d * state.tickMs * 256 / 0xFF00));
+      const maxMs = Math.max(1, Math.ceil(d * state.tickMs * 256 / minRate));
+      return Math.max(minMs, Math.min(maxMs, value));
+    }
+
+    function parseAdsr(payload) {
+      state.envMax = payload[0];
+      state.tickMs = payload[1];
+      state.rates.attack = (payload[2] << 8) | payload[3];
+      state.rates.decay = (payload[4] << 8) | payload[5];
+      state.sustainThr = payload[6];
+      state.rates.sustainDecay = (payload[7] << 8) | payload[8];
+      state.rates.release = (payload[9] << 8) | payload[10];
+      for (const f of fields) state.durations[f.key] = durationMs(distance(f.key), state.rates[f.key]);
+    }
+
+    function buildAdsrPayload() {
+      const p = new Uint8Array(11);
+      p[0] = state.envMax;
+      p[1] = state.tickMs;
+      put16(p, 2, state.rates.attack);
+      put16(p, 4, state.rates.decay);
+      p[6] = state.sustainThr;
+      put16(p, 7, state.rates.sustainDecay);
+      put16(p, 9, state.rates.release);
+      return p;
+    }
+
+    function setDuration(key, value) {
+      const clamped = clampDuration(key, Number(value) || 0);
+      state.rates[key] = rateFrac(distance(key), clamped);
+      state.durations[key] = durationMs(distance(key), state.rates[key]);
+    }
+
+    function put16(buf, offset, value) {
+      buf[offset] = (value >> 8) & 0xFF;
+      buf[offset + 1] = value & 0xFF;
+    }
+
+    function hex8(value) {
+      return value.toString(16).toUpperCase().padStart(2, '0');
+    }
+
+    function hex16(value) {
+      return value.toString(16).toUpperCase().padStart(4, '0');
+    }
+
+    function hexPayload(payload) {
+      return [...payload].map(hex8).join('');
+    }
+
+    function log(text) {
+      const now = new Date().toLocaleTimeString();
+      els.log.textContent += `[${now}] ${text}\n`;
+      els.log.scrollTop = els.log.scrollHeight;
+    }
+
+    function setStatus(text, cls = '') {
+      els.statusText.textContent = text;
+      els.statusDot.className = `dot ${cls}`.trim();
+    }
+
+    function setConnected(connected) {
+      els.reloadBtn.disabled = !connected;
+      els.applyBtn.disabled = !connected;
+      els.flatBtn.disabled = !connected;
+      els.liveToggle.disabled = !connected;
+      els.connectBtn.textContent = connected ? '断开' : '连接串口';
+      setStatus(connected ? '已连接' : '未连接', connected ? 'connected' : '');
+    }
+
+    function renderControls() {
+      els.params.innerHTML = '';
+      for (const f of fields) {
+        const row = document.createElement('div');
+        row.className = 'row';
+
+        const head = document.createElement('div');
+        head.className = 'row-head';
+
+        const text = document.createElement('div');
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = f.label;
+        const hint = document.createElement('div');
+        hint.className = 'hint';
+        hint.textContent = f.hint;
+        text.append(label, hint);
+
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = String(f.max);
+        slider.step = '5';
+        slider.value = String(Math.min(f.max, state.durations[f.key]));
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.step = '1';
+        input.value = String(state.durations[f.key]);
+
+        const inputUnit = document.createElement('div');
+        inputUnit.className = 'input-unit';
+        const unit = document.createElement('span');
+        unit.textContent = 'ms';
+        inputUnit.append(input, unit);
+
+        const rate = document.createElement('div');
+        rate.className = 'rate';
+        rate.innerHTML = `<strong>0x${hex16(state.rates[f.key])}</strong>rate`;
+
+        const update = async (value) => {
+          setDuration(f.key, value);
+          slider.value = String(Math.min(f.max, state.durations[f.key]));
+          input.value = String(state.durations[f.key]);
+          rate.innerHTML = `<strong>0x${hex16(state.rates[f.key])}</strong>rate`;
+          renderMeta();
+          renderPlot();
+          if (els.liveToggle.checked) await applyAdsr();
+        };
+
+        slider.addEventListener('input', () => update(slider.value).catch(showError));
+        input.addEventListener('change', () => update(input.value).catch(showError));
+
+        head.append(text, inputUnit, rate);
+        row.append(head, slider);
+        els.params.append(row);
+      }
+    }
+
+    function renderMeta() {
+      els.envMax.textContent = state.envMax;
+      els.tickMs.textContent = `${state.tickMs} ms`;
+      els.sustainThr.textContent = state.sustainThr;
+      els.payloadHex.textContent = hexPayload(buildAdsrPayload());
+    }
+
+    function renderPlot() {
+      const canvas = els.plot;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const total = Math.max(1, state.durations.attack + state.durations.decay +
+        Math.max(600, Math.min(2400, state.durations.sustainDecay || 1200)) + state.durations.release);
+      const padL = 54;
+      const padR = 20;
+      const padT = 24;
+      const padB = 46;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
+      const sx = (ms) => padL + ms * plotW / total;
+      const sy = (level) => padT + (state.envMax - level) * plotH / state.envMax;
+      const sustainHold = Math.max(600, Math.min(2400, state.durations.sustainDecay || 1200));
+
+      drawGrid(ctx, { w, h, padL, padR, padT, padB, total });
+
+      const p0 = [sx(0), sy(0)];
+      const p1 = [sx(state.durations.attack), sy(state.envMax)];
+      const p2 = [sx(state.durations.attack + state.durations.decay), sy(state.sustainThr)];
+      const sustainEndLevel = state.durations.sustainDecay ? 0 : state.sustainThr;
+      const p3 = [sx(state.durations.attack + state.durations.decay + sustainHold), sy(sustainEndLevel)];
+      const p4 = [sx(total), sy(0)];
+
+      ctx.strokeStyle = '#0b6f6a';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(...p0);
+      ctx.lineTo(...p1);
+      ctx.lineTo(...p2);
+      ctx.lineTo(...p3);
+      ctx.lineTo(...p4);
+      ctx.stroke();
+
+      ctx.fillStyle = '#61707c';
+      ctx.font = '13px system-ui, sans-serif';
+      ctx.fillText('Attack', p0[0], h - 10);
+      ctx.fillText('Decay', Math.max(p1[0] + 4, padL), h - 10);
+      ctx.fillText('Sustain', Math.max(p2[0] + 4, padL), h - 10);
+      ctx.fillText('Release', Math.max(p3[0] + 4, padL), h - 10);
+
+      ctx.fillStyle = '#172026';
+      ctx.font = '12px ui-monospace, SFMono-Regular, Consolas, monospace';
+      ctx.fillText(`${state.durations.attack}ms`, Math.min(p1[0] + 4, w - 86), p1[1] + 14);
+      ctx.fillText(`${state.durations.decay}ms`, Math.min(p2[0] + 4, w - 86), p2[1] - 8);
+      ctx.fillText(`${state.durations.release}ms`, Math.max(p3[0] - 58, padL), p3[1] - 8);
+    }
+
+    function drawGrid(ctx, box) {
+      const { w, h, padL, padR, padT, padB, total } = box;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
+      const x = (ms) => padL + ms * plotW / total;
+      const y = (level) => padT + (state.envMax - level) * plotH / state.envMax;
+      const step = timeStep(total);
+
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#e7ecef';
+      ctx.fillStyle = '#61707c';
+      ctx.font = '12px ui-monospace, SFMono-Regular, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+
+      for (let t = 0; t <= total + 0.5; t += step) {
+        const px = x(t);
+        ctx.beginPath();
+        ctx.moveTo(px, padT);
+        ctx.lineTo(px, h - padB);
+        ctx.stroke();
+        ctx.fillText(`${Math.round(t)}ms`, px, h - padB + 8);
+      }
+
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      const levelStep = Math.max(16, Math.round(state.envMax / 4));
+      for (let level = 0; level <= state.envMax; level += levelStep) {
+        const py = y(level);
+        ctx.beginPath();
+        ctx.moveTo(padL, py);
+        ctx.lineTo(w - padR, py);
+        ctx.stroke();
+        ctx.fillText(String(level), padL - 8, py);
+      }
+
+      if (state.sustainThr > 0 && state.sustainThr < state.envMax) {
+        const py = y(state.sustainThr);
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = '#9db0ba';
+        ctx.beginPath();
+        ctx.moveTo(padL, py);
+        ctx.lineTo(w - padR, py);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillText(`S ${state.sustainThr}`, padL - 8, py);
+      }
+
+      ctx.strokeStyle = '#c8d0d7';
+      ctx.beginPath();
+      ctx.moveTo(padL, padT);
+      ctx.lineTo(padL, h - padB);
+      ctx.lineTo(w - padR, h - padB);
+      ctx.stroke();
+
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('time', w - padR - 32, h - padB + 24);
+      ctx.save();
+      ctx.translate(12, padT + 8);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText('env level', 0, 0);
+      ctx.restore();
+    }
+
+    function timeStep(totalMs) {
+      const target = totalMs / 6;
+      const steps = [50, 100, 200, 500, 1000, 2000, 5000];
+      return steps.find((step) => step >= target) || 10000;
+    }
+
+    function render() {
+      renderMeta();
+      renderControls();
+      renderPlot();
+    }
+
+    async function connect() {
+      if (!('serial' in navigator)) throw new Error('当前浏览器不支持 Web Serial API');
+      if (state.port) {
+        await disconnect();
+        return;
+      }
+      state.port = await navigator.serial.requestPort({
+        filters: [{ usbVendorId: 0x1A86, usbProductId: 0x7523 }],
+      });
+      state.rx = [];
+      setConnected(true);
+      const info = state.port.getInfo();
+      log('serial permission granted');
+      log(`port info vid=0x${hex16(info.usbVendorId || 0)} pid=0x${hex16(info.usbProductId || 0)}`);
+      log('loading ADSR parameters');
+      await reloadAdsr();
+      setStatus('已连接，参数已读取', 'connected');
+    }
+
+    async function disconnect() {
+      state.disconnecting = true;
+      await closePortSession(true).catch(() => {});
+      state.reader = null;
+      state.writer = null;
+      state.port = null;
+      state.rx = [];
+      state.disconnecting = false;
+      setConnected(false);
+      log('serial disconnected');
+    }
+
+    async function cleanupLostPort() {
+      if (state.disconnecting) return;
+      state.disconnecting = true;
+      const port = state.port;
+      await closePortSession(true).catch(() => {});
+      if (port) await port.close().catch(() => {});
+      state.reader = null;
+      state.writer = null;
+      state.port = null;
+      state.rx = [];
+      state.disconnecting = false;
+      setConnected(false);
+      log('serial device lost; port state cleared');
+    }
+
+    function isDeviceLostError(error) {
+      const message = String(error && error.message || '').toLowerCase();
+      return message.includes('device has been lost') || message.includes('device was disconnected');
+    }
+
+    async function reloadAdsr() {
+      const payload = await command(CMD_ADSR_GET);
+      if (payload.length !== 11) throw new Error(`ADSR_GET 长度异常: ${payload.length}`);
+      parseAdsr(payload);
+      render();
+      log(`read ${hexPayload(payload)}`);
+    }
+
+    async function applyAdsr() {
+      if (state.busy) return;
+      state.busy = true;
+      try {
+        const payload = buildAdsrPayload();
+        await command(CMD_ADSR_SET, payload);
+        log(`write ${hexPayload(payload)}`);
+      } finally {
+        state.busy = false;
+      }
+    }
+
+    async function showError(error) {
+      setStatus(error.message, 'error');
+      log(`error: ${error.message}`);
+    }
+
+    els.connectBtn.addEventListener('click', () => connect().catch(showError));
+    els.reloadBtn.addEventListener('click', () => reloadAdsr().catch(showError));
+    els.applyBtn.addEventListener('click', () => applyAdsr().catch(showError));
+    els.flatBtn.addEventListener('click', () => {
+      setDuration('sustainDecay', 0);
+      render();
+      if (els.liveToggle.checked) applyAdsr().catch(showError);
+    });
+
+    if ('serial' in navigator) {
+      navigator.serial.addEventListener('disconnect', (event) => {
+        if (event.target === state.port) {
+          cleanupLostPort().catch(() => {});
+        }
+      });
+    }
+
+    renderControls();
+    renderMeta();
+    renderPlot();
+    if (!('serial' in navigator)) setStatus('浏览器不支持 Web Serial API', 'error');
+  </script>
+</body>
+</html>

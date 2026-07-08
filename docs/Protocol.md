@@ -457,6 +457,18 @@ python3 tools/midi_player.py --port /dev/ttyUSB0 song.mid --transpose -12 --velo
 python3 tools/midi_player.py --port /dev/ttyUSB0 song.mid --note-min 36 --note-max 84
 ```
 
+### Web ADSR 编辑器
+
+`tools/adsr_web.py` 启动一个本地 HTTP 服务并打开 `tools/adsr_web.html`。页面使用 Chrome/Edge 的 Web Serial API 访问 CH340 USB-UART (`VID:PID = 1A86:7523`)，选择串口后会自动执行 `CMD_ADSR_GET` 读取当前参数。
+
+```bash
+python3 tools/adsr_web.py
+```
+
+编辑器提供四个可写运行时参数：Attack、Decay、Sustain Decay、Release，单位为 ms。页面会把 ms 时长转换为固件协议使用的 8.8 rate，并通过 `CMD_ADSR_SET` 写入；`Sustain Decay = 0 ms` 表示 sustain 阶段保持平坦。右侧显示当前 11 字节 payload，曲线图显示 envelope level 与 time(ms) 网格。`SUSTAIN_THRESHOLD` 当前是固件固定字段，只展示为 Sustain Level，不可由 Web UI 写入。
+
+Web Serial 需要从 `localhost` 或 HTTPS 页面打开，不能直接双击 HTML 文件。Linux 上推荐使用 deb 版 Chrome/Edge；Snap/Flatpak 浏览器可能因为沙盒权限无法稳定访问 `/dev/ttyUSB0`。
+
 ### 示例
 
 ```bash

@@ -104,4 +104,12 @@ For ADSR-focused board tests, use:
 python3 tools/adsr_test.py --port /dev/ttyUSB0 --test all
 ```
 
+For manual ADSR tuning on hardware, use the Web Serial editor:
+
+```bash
+python3 tools/adsr_web.py
+```
+
+The editor requires Chrome/Edge Web Serial support and writes the same runtime `ADSR_SET` parameters as `musicbox_proto.py`. Changes are not persisted across reset.
+
 The serial tests depend on hardware timing, UART availability, and the currently flashed firmware. They complement the firmware self-tests but are not a replacement for the deterministic `RUN_TEST` suite.

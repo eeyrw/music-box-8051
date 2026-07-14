@@ -79,37 +79,6 @@ static int8_t interpolate_sample(uint16_t pos, uint8_t frac)
 #endif
 }
 
-static int16_t compressor_reference(int16_t x)
-{
-	uint8_t i;
-
-	for (i = 0; i < SYNTH_COMPRESSOR_SEGMENTS; i++) {
-		const SynthCompressorSegment *seg = &SynthCompressorSegments[i];
-		if (x >= seg->lo && x <= seg->hi) {
-			if (seg->negate) {
-				int16_t mag = -x;
-				int16_t y;
-				if (seg->slope_q8 >= 0)
-					y = ((uint16_t)mag * (uint16_t)seg->slope_q8) >> 8;
-				else if (seg->shift < 0)
-					y = seg->intercept;
-				else
-					y = mag >> seg->shift;
-				y += seg->intercept;
-				return -y;
-			}
-			if (seg->slope_q8 >= 0)
-				return (((uint16_t)x * (uint16_t)seg->slope_q8) >> 8) +
-					seg->intercept;
-			if (seg->shift < 0)
-				return seg->intercept;
-			return (x >> seg->shift) + seg->intercept;
-		}
-	}
-
-	return 0x7fff;
-}
-
 static void synth_reference_step(Synthesizer *synth)
 {
 	int16_t mix = 0;
@@ -315,37 +284,17 @@ static void TestSynthAsmStep(void)
 	compare_synth_step("wrap voice", &expectedSynth);
 }
 
-static void TestSegmentCompressor(void)
+static void TestCompressorGainTable(void)
 {
-	int16_t x;
-	int16_t prev = -32768;
 	uint8_t prev_gain = 255;
 
-	printf("TestSegmentCompressor\n");
-	ASSERT_EQ_I16("compress first lo", SYNTH_COMPRESSOR_INPUT_MIN,
-		SynthCompressorSegments[0].lo);
-	ASSERT_EQ_I16("compress last hi", SYNTH_COMPRESSOR_INPUT_MAX,
-		SynthCompressorSegments[SYNTH_COMPRESSOR_SEGMENTS - 1].hi);
-
-	for (uint8_t i = 1; i < SYNTH_COMPRESSOR_SEGMENTS; i++)
-		ASSERT_EQ_I16("compress contiguous", SynthCompressorSegments[i - 1].hi + 1,
-			SynthCompressorSegments[i].lo);
-
-	for (x = SYNTH_COMPRESSOR_INPUT_MIN; x <= SYNTH_COMPRESSOR_INPUT_MAX; x++) {
-		int16_t y = compressor_reference(x);
-		int16_t target = SynthCompressorTarget[x - SYNTH_COMPRESSOR_INPUT_MIN];
-		int16_t err = y - target;
-		if (err < 0)
-			err = -err;
-		ASSERT_TRUE("compress error", err <= SYNTH_COMPRESSOR_MAX_ERROR);
-		ASSERT_TRUE("compress range", y >= SYNTH_COMPRESSOR_OUTPUT_MIN &&
-			y <= SYNTH_COMPRESSOR_OUTPUT_MAX);
-		ASSERT_TRUE("compress monotonic", y >= prev);
-		prev = y;
-	}
+	printf("TestCompressorGainTable\n");
+	ASSERT_EQ_U8("compress fast gain", SYNTH_COMPRESSOR_FAST_GAIN,
+		SynthCompressorGainTable[0]);
 
 	for (uint16_t i = 0; i < 256; i++) {
 		uint8_t gain = SynthCompressorGainTable[i];
+		ASSERT_TRUE("compress gain nonzero", gain > 0);
 		ASSERT_TRUE("compress gain monotonic", gain <= prev_gain);
 		prev_gain = gain;
 	}
@@ -360,7 +309,7 @@ void TestProcess(void)
 	TestNoteOnAllocation();
 	TestNoteOffRelease();
 	TestAdsrStateMachine();
-	TestSegmentCompressor();
+	TestCompressorGainTable();
 	TestSynthAsmStep();
 
 	if (failures == 0)

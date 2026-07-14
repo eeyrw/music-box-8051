@@ -9,12 +9,8 @@
 	.include "SynthCore.inc"
 	.globl _synthForAsm
 	.globl _voiceState
-	.globl _CompressorGainTable
 
 	.area IABS    (ABS,DATA)
 	.org SynthAbsAddr
 _synthForAsm::
 	.ds SynthTotalSize              ; 80 字节
-
-	.area CSEG    (CODE)
-	.include "CompressorTableGenerated.inc"

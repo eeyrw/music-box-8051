@@ -71,7 +71,6 @@ COMPRESSOR_PRESET      ?= loud
 COMPRESSOR_INPUT_BITS  ?= 11
 COMPRESSOR_OUTPUT_MIN  ?= -127
 COMPRESSOR_OUTPUT_MAX  ?= 127
-COMPRESSOR_SLOPE_MODE  ?= shift
 ```
 
 `loud` resolves to the same compressor knee as `safe`, but adds makeup gain so that a 0 dBFS input maps close to output full-scale:
@@ -171,26 +170,21 @@ For low levels under the threshold, the nominal gain is the pass-through scale f
 nominal_gain = 127 * 256 * makeup_gain / 1024
 ```
 
-With the `safe` preset this is about `32`, so the generated ISR can use a fast `>> 3` path. With the current `loud` preset the generated nominal gain is about `53`, which is not a power-of-two divisor of 256, so the ISR uses the general multiply path.
+With the `safe` preset this is about `32`. With the current `loud` preset the generated nominal gain is about `53`.
 
 The table is forced non-increasing after generation. This avoids small rounding reversals such as `63,64,63`, which can cause gain jitter.
 
-The table is emitted as code memory in `Synthesizer/CompressorTableGenerated.inc`:
+The table is emitted in generated C source so it has a single CODE-memory definition:
 
-```asm
-_CompressorGainTable::
-    .db ...
+```c
+const __code uint8_t SynthCompressorGainTable[256] = { ... };
 ```
 
-It is included by `SynthCoreAsm.s` in a standalone `CSEG`, not inside the ISR execution stream.
+The generated header contains the compressor constants, the `extern` declaration, and the formula used to compute the table. `SynthCompressorTick()` uses this table from C and writes the selected value to `synthForAsm.compressorGain`. The ISR never looks up the table.
 
 ## ISR Path
 
-`Synth.inc` includes `CompressorGenerated.inc` and expands:
-
-```asm
-COMPRESS_R6R5_TO_R6R5
-```
+`Synth.inc` contains the compressor gain application inline.
 
 At macro entry:
 
@@ -198,13 +192,12 @@ At macro entry:
 r6:r5 = signed raw mixOut
 ```
 
-The macro:
+The compressor block:
 
 1. Reads `synthForAsm.compressorGain` once.
-2. If the generated nominal gain is a power-of-two divisor of 256, uses a fast arithmetic shift path.
-3. Otherwise applies signed `16x8` gain scaling inline, with positive and negative paths expanded separately.
+2. Applies signed `16x8` gain scaling inline, with positive and negative paths expanded separately.
 
-The compressor macro does not update the envelope and does not look up the gain table. It also does not use `acall` or `ret`, so it does not add stack traffic inside the Timer0 ISR.
+The compressor block does not update the envelope and does not look up the gain table. It also does not use `acall` or `ret`, so it does not add stack traffic inside the Timer0 ISR.
 
 After the macro, `Synth.inc` runs the same signed clamp used by the non-compressor path:
 
@@ -243,34 +236,17 @@ This makes the ownership explicit. These bytes are not shared with dithering or 
 The generator is:
 
 ```text
-tools/gen_segment_compressor.py
+tools/gen_compressor.py
 ```
 
 It writes:
 
 ```text
-Synthesizer/CompressorGenerated.inc       ISR macro only
-Synthesizer/CompressorTableGenerated.inc  CODE gain table
-Synthesizer/CompressorGenerated.h         C test/reference data
+Synthesizer/CompressorGenerated.h         C constants, extern table declaration, formula notes
+Synthesizer/CompressorGenerated.c         CODE-memory gain table definition
 ```
 
-The Makefile target is automatic; changing generator parameters regenerates all three files before compiling dependent objects.
-
-## Reference Segment Data
-
-The generated header and comments still include a minimax segment approximation of the static target curve. This is retained for firmware tests and curve inspection.
-
-The current ISR does not use those segments directly. Runtime compression uses:
-
-```text
-envelope -> gain table -> sample * gain
-```
-
-not:
-
-```text
-sample -> static segment transfer curve
-```
+The Makefile target is automatic; changing generator parameters regenerates both files before compiling dependent objects.
 
 ## Verification
 
@@ -283,8 +259,6 @@ make clean && make
 
 Current self-tests verify:
 
-- generated segment coverage and monotonicity
-- generated target approximation error
 - generated gain table monotonicity
 - the existing `SynthAsm` mixer behavior
 

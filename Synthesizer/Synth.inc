@@ -11,8 +11,8 @@
 ;      d. 累加到 16-bit mixOut
 ;      e. 推进相位 (frac+int)，检查并处理循环点
 ;   2. 对所有声道处理完后：
-;      a. mixOut >>= 1 (避免累加溢出)
-;      b. 裁剪到 [-128, 127]
+;      a. 应用主循环准备好的动态压缩增益
+;      b. 最终限幅到 [-128, 127]
 ;      c. 加 DC 偏移 (+128) 以适配无符号 PWM
 ;      d. 写入 PWMA_CCR2 PWM 占空比寄存器 (8-bit DAC 输出)
 ;
@@ -184,8 +184,73 @@ soundUnitProcessEnd'Idx'$:
 	; mixOut 在 r6:r5 中 (r6=高, r5=低)
 
 .ifne USE_SEGMENT_COMPRESSOR
-	.include "CompressorGenerated.inc"
-	COMPRESS_R6R5_TO_R6R5
+	; ---- Dynamic compressor: r6:r5 = r6:r5 * compressorGain / 256 ----
+	; compressorGain is prepared by SynthCompressorTick() in C.
+	mov	a,(pSynth+pCompressorGain)
+	mov	r1,a
+	mov	a,r6
+	jnb	acc.7,compress_apply_positive$
+
+	; Convert negative sample to magnitude.
+	mov	a,r5
+	cpl	a
+	add	a,#1
+	mov	r5,a
+	mov	a,r6
+	cpl	a
+	addc	a,#0
+	mov	r6,a
+
+	mov	a,r6
+	mov	r0,a
+	mov	a,r1
+	mov	b,a
+	mov	a,r5
+	mul	ab
+	mov	a,b
+	mov	r5,a
+	mov	a,r0
+	jz	compress_unsigned_high_done_neg$
+	mov	a,r1
+	mov	b,a
+	mov	a,r0
+	mul	ab
+	add	a,r5
+	mov	r5,a
+compress_unsigned_high_done_neg$:
+	mov	r6,#0
+
+	; Restore sign.
+	mov	a,r5
+	cpl	a
+	add	a,#1
+	mov	r5,a
+	mov	a,r6
+	cpl	a
+	addc	a,#0
+	mov	r6,a
+	sjmp	compress_done$
+
+compress_apply_positive$:
+	mov	a,r6
+	mov	r0,a
+	mov	a,r1
+	mov	b,a
+	mov	a,r5
+	mul	ab
+	mov	a,b
+	mov	r5,a
+	mov	a,r0
+	jz	compress_unsigned_high_done_pos$
+	mov	a,r1
+	mov	b,a
+	mov	a,r0
+	mul	ab
+	add	a,r5
+	mov	r5,a
+compress_unsigned_high_done_pos$:
+	mov	r6,#0
+compress_done$:
 .endif ; USE_SEGMENT_COMPRESSOR
 
 CLIP_UPPER=127

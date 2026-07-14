@@ -305,7 +305,7 @@ while (1) {
 
 ### Wavetable synthesis algorithm
 
-8-bit signed PCM sample, base frequency and sample count defined in `WaveTable.h`/`.inc` (recent: Square Wave C4, 5428 samples). Sample rate 32000 Hz.
+8-bit signed PCM sample, base frequency and sample count defined in `WaveTable.h`/`.inc` (recent: Square Wave C5, 1390 samples). Sample rate 32000 Hz.
 
 Per-voice per-tick:
 1. Read `WaveTable[pos]` + `WaveTable[pos+1]`, linear-interpolate with fractional phase
@@ -314,7 +314,7 @@ Per-voice per-tick:
 4. Phase advance: `pos_frac += inc_frac; pos_int += inc_int + carry`
 5. Loop point: when `pos_int >= WAVETABLE_LEN`, subtract `WAVETABLE_LOOP_LEN`
 
-After all voices: `mixOut >>= 1`, clamp to [-128,127], add DC offset (+128), optional LFSR dithering (±1 LSB), write to `PWMA_CCR2` (PWM DAC output).
+After all voices: raw `mixOut` is dynamically compressed with the gain prepared by `SynthCompressorTick()`, clamped to [-128,127], DC-shifted (+128), optionally dithered (±1 LSB), and written to `PWMA_CCR2` (PWM DAC output).
 
 ### Envelope / NoteOff (ADSR model, 2026-07)
 
@@ -582,7 +582,7 @@ Include paths: `-IPlayer -ISynthesizer` (C and ASM). Both directories are always
 
 - **B register pressure**: `mov b,r4` (line 48) loads envelope before the signed-mul branch. If interpolation is disabled (`.ifne USE_LINEAR_INTEROP`), `r4` is unused between lines 13-48.
 - **Signed multiply branching**: For each voice, two separate signed-mul code paths (interpolation multiply + envelope multiply) generate unique labels per `.irp` iteration. The `jb a.7` / `cpl / inc / mul / cpl / addc` pattern is correct but verbose. Could unify with a subroutine if code size matters more than cycles.
-- **mixOut >>= 1 with sign extension**: uses `r4,r5` as temporaries, shifting bit 7 of the high byte into carry. Could be in-place at `(pSynth+pMixOut_x)` instead of copying to registers.
+- **Compressor gain apply**: post-mix raw `mixOut` is multiplied by the main-loop-prepared 8-bit Q8 compressor gain before final clipping. The positive/negative paths are currently expanded inline; a shared subroutine would save code size but add ISR stack traffic.
 - **Clipping**: the 16-bit signed `if (x > 127) x=127; else if (x < -128) x=-128` uses signed 16-bit compare with XOR-0x80 sign-flip trick. Two conditional branches. Could be replaced with saturation arithmetic using carry flags.
 - **DC offset removal**: `a - (-128)` = `a + 128`. A direct `add a,#128` with carry propagation is 1-2 cycles faster than `subb a,#-128`.
 - **Phase increment**: reads `pIncrement_frac/int` fresh from DATA each iteration even when increment is unchanged. Loading once per voice is already minimal since registers are scarce.

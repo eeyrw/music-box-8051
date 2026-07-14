@@ -1,12 +1,12 @@
 #ifndef __WAVETABLE__
 #define __WAVETABLE__
-// Sample name: Square Wave C4
-// Sample's base frequency: 262.22755246353034 Hz
+// Sample name: Square Wave C5
+// Sample's base frequency: 524.4774968507006 Hz
 // Sample's sample rate: 32000 Hz
-#define WAVETABLE_LEN 5427
-#define WAVETABLE_ATTACK_LEN 5306
-#define WAVETABLE_LOOP_LEN 121
-#define WAVETABLE_ACTUAL_LEN 5428
+#define WAVETABLE_LEN 1389
+#define WAVETABLE_ATTACK_LEN 1328
+#define WAVETABLE_LOOP_LEN 61
+#define WAVETABLE_ACTUAL_LEN 1390
 
 #include <stdint.h>
 extern __code int8_t WaveTable[WAVETABLE_ACTUAL_LEN];

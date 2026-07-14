@@ -106,11 +106,11 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 
 ### Signal chain
 
-1. **Wavetable**: Configurable 8-bit signed PCM sample at 32 kHz (current: Square Wave C4, 5,428 samples, 5,306-sample attack + 121-sample loop). `WaveTable.h`/`.inc` define dimensions.
+1. **Wavetable**: Configurable 8-bit signed PCM sample at 32 kHz (current: Square Wave C5, 1,390 samples, 1,328-sample attack + 61-sample loop). `WaveTable.h`/`.inc` define dimensions.
 2. **Phase accumulator**: 16.8 fixed-point per voice, indexed by MIDI note number through a precomputed `WaveTable_Increment` table
 3. **Linear interpolation**: Between adjacent samples using the 8-bit fractional phase component
 4. **Envelope**: Full ADSR model with 8.8 fixed-point fractional rate per tick. Attack (0→128), Decay (128→100), Sustain (hold or decay from 100→0), Release (linear decay from current env to 0). Raw envelope (0-128) × velocity scale (0-254) → index into 128-entry non-linear response curve → final envelopeLevel (0-255). MIDI velocity is clamped to 0-127; 0 is treated as NoteOff. Tick interval `ADSR_TICK_MS=5ms`, phase-locked to system timer. Default durations are configured via `SynthCore.h` macros (`ADSR_ATTACK_MS=10`, `ADSR_DECAY_MS=30`, `ADSR_SUSTAIN_DECAY_MS=2000`, `ADSR_RELEASE_MS=300`) and can be adjusted at runtime with the serial `adsr-set` command until reset.
-5. **Mixing**: 8 voices summed into a 16-bit accumulator, then `>>=1`, clipped to [-128, 127], and DC-shifted by +128 for unsigned 8-bit PWM
+5. **Mixing**: 8 voices summed into a 16-bit accumulator, dynamically compressed, finally clamped to [-128, 127], and DC-shifted by +128 for unsigned 8-bit PWM
 6. **Dithering**: Galois 16-bit LFSR adds ±1 LSB triangular dither before PWM output, converting quantization noise to white noise floor. Toggle via `USE_DITHERING` macro in `SynthCore.inc`.
 
 ### Timing
@@ -221,7 +221,7 @@ Full test details are documented in `docs/Testing.md`. Host-side ADSR/protocol t
 │   ├── SynthCoreAsm.s               _synthForAsm data segment (0x21)
 │   ├── SynthCore.c                  Synthesizer init + NoteOn/Off/Decay/ReleaseAll (C ADSR)
 │   ├── SynthCore.h                  SoundUnit/Synthesizer/VoiceState struct definitions
-│   ├── CompressorGenerated.*        Generated compressor macro/table/test reference
+│   ├── CompressorGenerated.{c,h}    Generated compressor gain table/constants
 │   ├── UpdateTick.inc               sysMs millisecond counter (ISR)
 │   ├── PeriodTimer.s                Timer0 ISR entry (bank switch)
 │   ├── PeriodTimer.h                sysMs extern declarations
@@ -235,7 +235,7 @@ Full test details are documented in `docs/Testing.md`. Host-side ADSR/protocol t
 │
 ├── tools/
 │   ├── musicbox_proto.py            Full serial protocol CLI client
-│   ├── gen_segment_compressor.py    Generate compressor macro/table from dBFS params
+│   ├── gen_compressor.py            Generate compressor gain table/constants from dBFS params
 │   ├── midi_player.py               Real-time MIDI playback via fast-note protocol
 │   ├── adsr_test.py                 ADSR envelope test suite
 │   ├── adsr_web.py                  Launch Web Serial ADSR editor

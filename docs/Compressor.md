@@ -67,29 +67,11 @@ output_mag = 127 * 10^(out_db / 20)
 The Makefile default is:
 
 ```make
-COMPRESSOR_PRESET      ?= loud
+COMPRESSOR_PRESET      ?= safe
 COMPRESSOR_INPUT_BITS  ?= 11
 COMPRESSOR_OUTPUT_MIN  ?= -127
 COMPRESSOR_OUTPUT_MAX  ?= 127
 ```
-
-`loud` resolves to the same compressor knee as `safe`, but adds makeup gain so that a 0 dBFS input maps close to output full-scale:
-
-```text
-threshold_db = -6.0 dBFS
-ratio        = 4.0:1
-makeup_db    ~= +4.5 dB
-```
-
-At full-scale input:
-
-```text
-out_db = -6 + (0 - (-6)) / 4 = -4.5 dBFS
-output_before_makeup ~= 127 * 10^(-4.5 / 20) ~= 76
-output_after_makeup  ~= 127
-```
-
-This is louder than the conservative preset, but the final ISR limiter still guarantees that the PWM byte cannot wrap.
 
 The conservative preset is:
 
@@ -97,7 +79,29 @@ The conservative preset is:
 make COMPRESSOR_PRESET=safe
 ```
 
-`safe` uses the same threshold and ratio with `0 dB` makeup. At full-scale input it maps to about 76 counts before PWM offset, leaving more headroom and hitting the final limiter less often.
+`safe` uses the threshold and ratio below with `0 dB` makeup. At full-scale input it maps to about 76 counts before PWM offset, leaving more headroom and hitting the final limiter less often.
+
+```text
+threshold_db = -6.0 dBFS
+ratio        = 4.0:1
+makeup_db    = 0.0 dB
+```
+
+At full-scale input:
+
+```text
+out_db = -6 + (0 - (-6)) / 4 = -4.5 dBFS
+output_before_makeup ~= 127 * 10^(-4.5 / 20) ~= 76
+output_after_makeup  ~= 76
+```
+
+The louder preset is:
+
+```bash
+make COMPRESSOR_PRESET=loud
+```
+
+`loud` resolves to the same compressor knee as `safe`, but adds about `+4.5 dB` makeup gain so that a 0 dBFS input maps close to output full-scale. The final ISR limiter still guarantees that the PWM byte cannot wrap.
 
 ## Envelope Follower
 
@@ -180,7 +184,7 @@ For low levels under the threshold, the nominal gain is the pass-through scale f
 nominal_gain = 127 * 256 * makeup_gain / 1024
 ```
 
-With the `safe` preset this is about `32`. With the current `loud` preset the generated nominal gain is about `53`.
+With the current `safe` preset this is about `32`. With the `loud` preset the generated nominal gain is about `53`.
 
 The table is forced non-increasing after generation. This avoids small rounding reversals such as `63,64,63`, which can cause gain jitter.
 
@@ -260,7 +264,14 @@ Synthesizer/CompressorGenerated.h         C constants, extern table declaration,
 Synthesizer/CompressorGenerated.c         CODE-memory gain table definition
 ```
 
-The Makefile target is automatic; changing generator parameters regenerates both files before compiling dependent objects.
+To force regeneration explicitly, run either alias:
+
+```bash
+make compressor
+make generate-compressor
+```
+
+Both targets rebuild the generated source/header and refresh `Synthesizer/CompressorGenerated.stamp` without relying on timestamp comparison. After changing compressor parameters, run one of these targets before building if you want the checked-in generated files updated immediately.
 
 ## Verification
 

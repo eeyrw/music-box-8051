@@ -15,7 +15,7 @@
  *       out_db = in_db
  *   else:
  *       out_db = -6.0 + (in_db - (-6.0)) / 4.0
- *   out_db += 4.5
+ *   out_db += 0.0
  *   target = 127 * 10^(out_db / 20)
  *   gain_q8 = round(target * 256 / mag)
  *
@@ -32,7 +32,7 @@
 #define SYNTH_COMPRESSOR_OUTPUT_MIN (-127)
 #define SYNTH_COMPRESSOR_OUTPUT_MAX (127)
 #define SYNTH_COMPRESSOR_ENV_SHIFT 2
-#define SYNTH_COMPRESSOR_FAST_GAIN 53
+#define SYNTH_COMPRESSOR_FAST_GAIN 32
 
 extern const __code uint8_t SynthCompressorGainTable[256];
 

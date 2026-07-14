@@ -92,7 +92,7 @@ COMPRESSOR_INPUT_BITS ?= 11
 COMPRESSOR_OUTPUT_BITS ?= 8
 COMPRESSOR_OUTPUT_MIN ?= -127
 COMPRESSOR_OUTPUT_MAX ?= 127
-COMPRESSOR_PRESET ?= loud
+COMPRESSOR_PRESET ?= safe
 COMPRESSOR_THRESHOLD_DB ?=
 COMPRESSOR_RATIO ?=
 COMPRESSOR_MAKEUP_DB ?=
@@ -136,7 +136,7 @@ all: $(OBJECTS) $(PROJECT_NAME).ihx $(PROJECT_NAME).hex $(PROJECT_NAME).bin
 # Don't delete dependency files
 .PRECIOUS: %.d
 
-.PHONY: FORCE
+.PHONY: FORCE compressor generate-compressor
 
 # Don't rebuild deps if cleaning
 ifneq ($(MAKECMDGOALS),clean)
@@ -156,6 +156,10 @@ endif
 
 
 ifeq ($(OS),Windows_NT)
+compressor generate-compressor:
+	@echo [GEN] CompressorGenerated
+	@$(PS) "$$genArgs = '$(COMPRESSOR_GEN_ARGS)'; $$genArgv = $$genArgs -split ' '; & $(PYTHON) tools/gen_compressor.py @genArgv; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE }; Set-Content -Encoding ASCII '$(COMPRESSOR_STAMP)' $$genArgs"
+
 %.rel: %.c Makefile
 	@echo [CC] $(notdir $<)
 # Output dependency
@@ -166,6 +170,11 @@ ifeq ($(OS),Windows_NT)
 $(COMPRESSOR_STAMP): FORCE
 	@$(PS) "$$genArgs = '$(COMPRESSOR_GEN_ARGS)'; function NewerThan($$a, $$b) { (Test-Path $$a) -and ((-not (Test-Path $$b)) -or ((Get-Item $$a).LastWriteTime -gt (Get-Item $$b).LastWriteTime)) }; $$first = if (Test-Path '$@') { Get-Content '$@' -TotalCount 1 } else { '' }; if ((-not (Test-Path '$@')) -or (-not (Test-Path 'Synthesizer/CompressorGenerated.h')) -or (-not (Test-Path 'Synthesizer/CompressorGenerated.c')) -or ($$first -ne $$genArgs) -or (NewerThan 'tools/gen_compressor.py' '$@') -or (NewerThan 'Makefile' '$@')) { Write-Host '[GEN] CompressorGenerated'; $$genArgv = $$genArgs -split ' '; & $(PYTHON) tools/gen_compressor.py @genArgv; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE }; Set-Content -Encoding ASCII '$@' $$genArgs }"
 else
+compressor generate-compressor:
+	@echo [GEN] CompressorGenerated
+	@$(PYTHON) tools/gen_compressor.py $(COMPRESSOR_GEN_ARGS)
+	@printf '%s\n' '$(COMPRESSOR_GEN_ARGS)' > $(COMPRESSOR_STAMP)
+
 %.rel: %.c Makefile
 	@echo [CC] $(notdir $<)
 # Output dependency

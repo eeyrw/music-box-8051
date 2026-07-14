@@ -21,12 +21,17 @@ make
 
 # Clean
 make clean
+
+# Force-regenerate compressor table/constants
+make compressor
 ```
 
 Outputs:
 - `music-box-8051.ihx` — SDCC intermediate Intel HEX
 - `music-box-8051.hex` — Packed Intel HEX
 - `music-box-8051.bin` — Raw binary
+
+`make compressor` and `make generate-compressor` explicitly rebuild `Synthesizer/CompressorGenerated.{h,c}` from `tools/gen_compressor.py` and update the compressor stamp file. Use either target after changing compressor Makefile parameters if you want to refresh generated code without relying on timestamp-based rebuild detection.
 
 ## Flash
 

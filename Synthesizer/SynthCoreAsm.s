@@ -13,4 +13,4 @@
 	.area IABS    (ABS,DATA)
 	.org SynthAbsAddr
 _synthForAsm::
-	.ds SynthTotalSize              ; 80 字节
+	.ds SynthTotalSize              ; 82 字节

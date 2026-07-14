@@ -9,8 +9,8 @@
 ;   0x10-0x1A: DSEG 变量 (sysMsPre + sysMs, 5 字节)
 ;   0x1B-0x1F: 未使用
 ;   0x20:      位寄存器
-;   0x21-0x6D: Synthesizer (77 字节 = 8×9 + 5)
-;   0x6E-0xFF: C 栈 (146 字节)
+;   0x21-0x72: Synthesizer (82 字节 = 8×9 + 10)
+;   0x73-0xFF: C 栈 (141 字节)
 ;
 ;   Player (~34 字节) → XRAM
 ;   VoiceState (6×8=48 字节) → XRAM
@@ -85,6 +85,8 @@
 	pCompressorEnv=unitSz*POLY_NUM+5  ; 77
 	pCompressorGain=unitSz*POLY_NUM+6 ; 78
 	pCompressorTick=unitSz*POLY_NUM+7 ; 79
+	pCompressorPeak_l=unitSz*POLY_NUM+8 ; 80
+	pCompressorPeak_h=unitSz*POLY_NUM+9 ; 81
 
 	SynthAbsAddr = 0x21
-	SynthTotalSize = unitSz*POLY_NUM+8 ; 80
+	SynthTotalSize = unitSz*POLY_NUM+10 ; 82

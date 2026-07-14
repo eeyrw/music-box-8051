@@ -23,7 +23,7 @@ Main-loop timing path:
         -> GenDecayEnvlopeAsm() every ADSR_TICK_MS
 ```
 
-The ISR only applies `synthForAsm.compressorGain`. Envelope detection and gain lookup are done outside the ISR by `SynthCompressorTick()` in `SynthCore.c`. A final limiter remains in the ISR after compression so that transient peaks cannot wrap around the 8-bit PWM range.
+The ISR accumulates a raw peak hold in `synthForAsm.compressorPeak` and applies `synthForAsm.compressorGain`. Envelope detection and gain lookup are done outside the ISR by `SynthCompressorTick()` in `SynthCore.c`. A final limiter remains in the ISR after compression so that transient peaks cannot wrap around the 8-bit PWM range.
 
 ## dBFS Definition
 
@@ -107,10 +107,20 @@ make COMPRESSOR_PRESET=safe
 #define COMPRESSOR_TICK_MS 1
 ```
 
-It reads `synthForAsm.mixOut`, which is the raw pre-compressor mixer output written by `SynthAsm`. The gain table has 256 entries, so the detector scales the raw magnitude down to a table index with the generated `SYNTH_COMPRESSOR_ENV_SHIFT`:
+The ISR updates `synthForAsm.compressorPeak` on every 32 kHz sample:
+
+```text
+compressorPeak = max(compressorPeak, abs(raw_mixOut))
+```
+
+`SynthCompressorTick()` atomically reads and clears this peak once per compressor tick, then scales it down to a gain-table index with the generated `SYNTH_COMPRESSOR_ENV_SHIFT`:
 
 ```c
-level = abs(synthForAsm.mixOut) >> SYNTH_COMPRESSOR_ENV_SHIFT;
+EA = 0;
+mag = synthForAsm.compressorPeak;
+synthForAsm.compressorPeak = 0;
+EA = 1;
+level = mag >> SYNTH_COMPRESSOR_ENV_SHIFT;
 ```
 
 For the current 11-bit compressor input this resolves to:
@@ -218,6 +228,7 @@ The compressor state is stored directly in `Synthesizer`:
 uint8_t compressorEnv;
 uint8_t compressorGain;
 uint8_t compressorTick;
+uint16_t compressorPeak;
 ```
 
 Assembly offsets are defined in `SynthCore.inc`:
@@ -226,7 +237,8 @@ Assembly offsets are defined in `SynthCore.inc`:
 pCompressorEnv  = unitSz*POLY_NUM+5  ; 77
 pCompressorGain = unitSz*POLY_NUM+6  ; 78
 pCompressorTick = unitSz*POLY_NUM+7  ; 79
-SynthTotalSize  = unitSz*POLY_NUM+8  ; 80
+pCompressorPeak = unitSz*POLY_NUM+8  ; 80-81
+SynthTotalSize  = unitSz*POLY_NUM+10 ; 82
 ```
 
 This makes the ownership explicit. These bytes are not shared with dithering or visualization state.
@@ -268,5 +280,5 @@ Current self-tests verify:
 - The envelope is based on raw `mixOut`, not a true RMS detector.
 - The detector updates at 1 ms, not every audio sample.
 - The final limiter can still hard-clip extreme transients. That is intentional for anti-pop safety; the compressor exists to make this rare.
-- `Synthesizer` is now 80 bytes in internal DATA. This is explicit but reduces C stack headroom by 3 bytes compared with the original 77-byte layout.
+- `Synthesizer` is now 82 bytes in internal DATA. This is explicit but reduces C stack headroom by 5 bytes compared with the original 77-byte layout.
 - `COMPRESSOR_PRESET=loud` may sound louder but can pump more aggressively.

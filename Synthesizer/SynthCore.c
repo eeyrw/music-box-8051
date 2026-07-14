@@ -111,6 +111,7 @@ void SynthInit(Synthesizer *synth)
 	synth->compressorEnv = 0;
 	synth->compressorGain = SynthCompressorGainTable[0];
 	synth->compressorTick = 0;
+	synth->compressorPeak = 0;
 }
 
 void SynthDitherInit(Synthesizer *synth, uint16_t seed)
@@ -128,13 +129,11 @@ static uint32_t nextCompressorTickMs;
 
 static uint8_t compressorLevelFromMix(void)
 {
-	int16_t x = synthForAsm.mixOut;
 	uint16_t mag;
-
-	if (x < 0)
-		mag = (uint16_t)(-x);
-	else
-		mag = (uint16_t)x;
+	EA = 0;
+	mag = synthForAsm.compressorPeak;
+	synthForAsm.compressorPeak = 0;
+	EA = 1;
 
 	mag >>= SYNTH_COMPRESSOR_ENV_SHIFT;
 	return mag > 255 ? 255 : (uint8_t)mag;
@@ -184,6 +183,7 @@ void SynthEnvReset(void)
 	nextCompressorTickMs = nextTickMs;
 	synthForAsm.compressorEnv = 0;
 	synthForAsm.compressorGain = SynthCompressorGainTable[0];
+	synthForAsm.compressorPeak = 0;
 }
 
 void SynthReleaseAllAsm(void)

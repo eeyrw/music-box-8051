@@ -82,6 +82,7 @@ static int8_t interpolate_sample(uint16_t pos, uint8_t frac)
 static void synth_reference_step(Synthesizer *synth)
 {
 	int16_t mix = 0;
+	uint16_t mag;
 	uint8_t i;
 
 	for (i = 0; i < POLY_NUM; i++) {
@@ -108,6 +109,9 @@ static void synth_reference_step(Synthesizer *synth)
 	}
 
 	synth->mixOut = mix;
+	mag = mix < 0 ? (uint16_t)(-mix) : (uint16_t)mix;
+	if (mag > synth->compressorPeak)
+		synth->compressorPeak = mag;
 }
 
 static void copy_synth(Synthesizer *dst, Synthesizer *src)
@@ -119,6 +123,10 @@ static void copy_synth(Synthesizer *dst, Synthesizer *src)
 	dst->mixOut = src->mixOut;
 	dst->lastSoundUnit = src->lastSoundUnit;
 	dst->lfsr = src->lfsr;
+	dst->compressorEnv = src->compressorEnv;
+	dst->compressorGain = src->compressorGain;
+	dst->compressorTick = src->compressorTick;
+	dst->compressorPeak = src->compressorPeak;
 }
 
 static void compare_synth_step(const char *name, Synthesizer *expected)
@@ -126,6 +134,8 @@ static void compare_synth_step(const char *name, Synthesizer *expected)
 	uint8_t i;
 
 	ASSERT_EQ_I16(name, expected->mixOut, synthForAsm.mixOut);
+	ASSERT_EQ_U16("synth compressor peak", expected->compressorPeak,
+		synthForAsm.compressorPeak);
 	for (i = 0; i < POLY_NUM; i++) {
 		SoundUnitUnion *want = &expected->SoundUnitUnionList[i];
 		SoundUnitUnion *got = &synthForAsm.SoundUnitUnionList[i];

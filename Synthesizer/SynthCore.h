@@ -96,6 +96,7 @@ typedef struct _Synthesizer
 	uint8_t compressorEnv;
 	uint8_t compressorGain;
 	uint8_t compressorTick;
+	uint16_t compressorPeak;
 } Synthesizer;
 
 typedef struct _VoiceState

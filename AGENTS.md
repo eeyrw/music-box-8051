@@ -296,7 +296,7 @@ while (1) {
 ### Fixed memory layout (critical — do not change blindly)
 
 - **Player struct**: SDCC auto-allocated in XRAM (~39 bytes). `SSCR_Player` (19B) + `PlayScheduler` (24B).
-- **Synthesizer struct**: absolute DATA `0x21`, 77 bytes (`SynthCore.inc`, data segment declared in `SynthCoreAsm.s` via `.org`; ADSR logic in `SynthCore.c`)
+- **Synthesizer struct**: absolute DATA `0x21`, 82 bytes (`SynthCore.inc`, data segment declared in `SynthCoreAsm.s` via `.org`; ADSR/compressor control logic in `SynthCore.c`)
 - **sysMsPre + sysMs**: DSEG allocated by `UpdateTick.inc` (5 bytes DATA at compiler-assigned address, 0x10-0x1A)
 - **SPI 缓存**: 1024 字节 XRAM (`SpiFlash.c`)
 - **协议缓冲**: RX ring 256B + pkt_data 260B + tx_buf 264B ≈ 780B XRAM (`Protocol.c`)

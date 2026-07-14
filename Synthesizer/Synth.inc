@@ -17,11 +17,12 @@
 ;      d. 写入 PWMA_CCR2 PWM 占空比寄存器 (8-bit DAC 输出)
 ;
 ; 寄存器约定 (Bank 1, 0x08-0x0F):
-;   r0   — 插值暂存 (A = WaveTable[pos])
+;   r0   — 插值暂存；后处理 peak/compressor 乘法暂存
+;   r1   — 后处理 peak/compressor 暂存
 ;   r4   — envelopeLevel (每声道从头持有到尾)
 ;   r5   — mixOut 累加器低字节 (跨声道持有)
 ;   r6   — mixOut 累加器高字节 (跨声道持有)
-;   r1-r3,r7 — 未使用
+;   r2-r3,r7 — 未使用
 ;
 ; 算法参数 (WaveTable.inc):
 ;   波表: Celesta C5, 32000 Hz 采样率, 523 Hz 基频
@@ -174,6 +175,34 @@ soundUnitProcessEnd'Idx'$:
 	;     在 >>1/裁剪/DC偏移之前写回，保持与原版一致: Visualization 用原始值
 	mov (pSynth+pMixOut_l),r5         ; 2
 	mov (pSynth+pMixOut_h),r6         ; 2
+
+	; ---- 更新压缩器 peak hold: compressorPeak = max(compressorPeak, abs(raw mixOut)) ----
+	; r0:r1 = abs(raw mixOut), 保持 r6:r5 不变供后处理继续使用。
+	mov	a,r5
+	mov	r0,a
+	mov	a,r6
+	mov	r1,a
+	jnb	acc.7,compress_peak_abs_ready$
+	mov	a,r0
+	cpl	a
+	add	a,#1
+	mov	r0,a
+	mov	a,r1
+	cpl	a
+	addc	a,#0
+	mov	r1,a
+compress_peak_abs_ready$:
+	clr	c
+	mov	a,(pSynth+pCompressorPeak_l)
+	subb	a,r0
+	mov	a,(pSynth+pCompressorPeak_h)
+	subb	a,r1
+	jnc	compress_peak_keep$
+	mov	a,r0
+	mov	(pSynth+pCompressorPeak_l),a
+	mov	a,r1
+	mov	(pSynth+pCompressorPeak_h),a
+compress_peak_keep$:
 
 ;====================================================================
 ; 后处理: mixOut 仍在 r6:r5 中 (r5 = 低字节, r6 = 高字节)

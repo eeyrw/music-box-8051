@@ -7,8 +7,8 @@
 ;   1. 遍历 8 个声道，对每个有 envelopeLevel > 0 的声道：
 ;      a. 从 WaveTable 以 16.8 定点相位读数
 ;      b. 线性插值（相邻采样点之间的小数部分插值）
-;      c. 将采样值 (signed) 乘包络 (unsigned) → 除以 256
-;      d. 累加到 16-bit mixOut
+;      c. 将采样值 (signed) 乘包络 (unsigned)
+;      d. 完整累加到 24-bit accumulator，循环结束后统一 >> 8 得到 mixOut
 ;      e. 推进相位 (frac+int)，检查并处理循环点
 ;   2. 对所有声道处理完后：
 ;      a. 应用主循环准备好的动态压缩增益
@@ -20,9 +20,11 @@
 ;   r0   — 插值暂存；后处理 peak/compressor 乘法暂存
 ;   r1   — 后处理 peak/compressor 暂存
 ;   r4   — envelopeLevel (每声道从头持有到尾)
-;   r5   — mixOut 累加器低字节 (跨声道持有)
-;   r6   — mixOut 累加器高字节 (跨声道持有)
-;   r2-r3,r7 — 未使用
+;   r5   — 24-bit 乘积累加器低字节，统一 >> 8 后为丢弃字节
+;   r6   — 24-bit 乘积累加器中字节，统一 >> 8 后为 mixOut 低字节
+;   r7   — 24-bit 乘积累加器高字节，统一 >> 8 后为 mixOut 高字节
+;   r2   — 插值负分支暂存 frac
+;   r3   — 未使用
 ;
 ; 算法参数 (WaveTable.inc):
 ;   波表: Celesta C5, 32000 Hz 采样率, 523 Hz 基频
@@ -34,20 +36,25 @@
 ; 宏机制：使用 .irp 将 8 个声道的处理循环展开为 8 段独立代码。
 ;
 ; 速度优化:
-;   [1] mixOut 累加在 r6:r5 而非内存 — 省 6 周期/声道 (init + post + per-voice)
-;   [2] xch a,b 替代 mov a,b — 省 2 周期/乘 × 8×2 = 16 周期
-
-;   [3] add a,#128 替代 subb — 省 2 周期
-;   合计: ~42 周期 → 约 7% 加速
+;   [1] mixOut/accumulator 保持在寄存器中，避免每声道读写内存累加器。
+;   [2] 包络乘法保留完整 16-bit product，8 声道先累加到 24-bit accumulator，
+;       最后统一 >> 8；低 8 位能跨声道进位，弱音/尾音不会被每声道提前截断。
+;   [3] 使用 xch a,b 搬运 MUL AB 的高/低字节，避开 mov a,b 的 2-byte 指令。
+;   [4] 静音声道先 jz 再保存 envelope 到 r4，静音 fast path 少 1 条指令。
+;   [5] 限幅利用目标范围 [-128,127] 的高字节模式判断，替代两次 16-bit compare。
+;   [6] 插值 signed multiply 负分支用 high(unsigned_delta*frac)-frac，避免取绝对值后再取反。
+;   [7] 包络 signed multiply 负分支先累加 unsigned product，再减 env<<8。
+;   [8] add a,#128 替代 subb 做 DC 偏移。
 ;====================================================================
 
 	.area CSEG    (CODE)
 _SynthAsm:
 	pSynth = SynthAbsAddr
 
-	; ---- 清零 mixOut 累加到寄存器 (2 周期 vs 原本 4 周期内存清零) ----
-	mov r5,#0                         ; r5 = mixOut_l = 0
-	mov r6,#0                         ; r6 = mixOut_h = 0
+	; ---- 清零 24-bit 乘积累加器 ----
+	mov r5,#0                         ; r5 = acc_l = 0
+	mov r6,#0                         ; r6 = acc_m = 0
+	mov r7,#0                         ; r7 = acc_h = 0
 
 ;====================================================================
 ; 8 声道合成循环 (宏展开)
@@ -58,8 +65,10 @@ _SynthAsm:
 
 	; 阶段 A: 包络检查
 	mov a, (pSndUnit+pEnvelopeLevel)  ; 1
-	mov r4,a                           ; 1 (envelope 暂存)
+	; Optimization [4]: zero-envelope voices do not need r4. Put the branch before
+	; the register copy so silent voices skip one instruction on the hot ISR path.
 	jz soundUnitProcessEnd'Idx'$       ; 2 (不跳 = 4 周期)
+	mov r4,a                           ; 1 (envelope 暂存)
 
 	; 阶段 B: 构造 DPTR = WaveTable 基址 + pos_int (5 周期)
 	mov dpl, (pSndUnit+pWavetablePos_int_l)  ; 2
@@ -92,50 +101,89 @@ _SynthAsm:
 
 signedMulNegBranch0'Idx'$:
 	; -- 负路径 --
-	cpl a                              ; 1
-	inc a                              ; 1 (a = |B-A|)
+	; Optimization [6]: for negative delta, signed_delta = unsigned_delta - 256,
+	; so high(signed_delta * frac) = high(unsigned_delta * frac) - frac.
+	; Here A already contains the 8-bit two's-complement delta (0x80..0xFF), which
+	; can also be interpreted as unsigned_delta. B holds frac. MUL AB computes:
+	;   unsigned_delta * frac = P_hi:P_lo
+	; The wanted signed product is:
+	;   (unsigned_delta - 256) * frac = P - (frac << 8)
+	; After discarding the low byte for interpolation, this becomes P_hi - frac.
+	; This avoids abs(delta), 16-bit negation, and the extra carry handling.
+	mov r2,b                            ; 1 (r2 = frac, MUL will overwrite B)
 	mul ab                             ; 4
-	cpl a                              ; 1
-	add a,#1                           ; 2 (取反乘积低字节, 设 CY)
 	xch a,b                            ; 1 (★ 优化 [2]: 省 1 周期)
-	cpl a                              ; 1
-	addc a,#0                          ; 2 (取反乘积高字节, 带进位)
+	clr c                              ; 1
+	subb a,r2                          ; 1 (a = high(unsigned product) - frac)
 signedMulEnd0'Idx'$:
 
 	add a,r0                           ; 1 (a = A + 插值项)
 .endif ; USE_LINEAR_INTEROP
 
-	; 阶段 C: 包络乘法 — sample(signed) × envelope(unsigned) / 256 (11 周期, 正分支)
+	; 阶段 C: 包络乘法 — sample(signed) × envelope(unsigned)，保留完整 16-bit 乘积
+	; Optimization [2]: the old path used product_h only, equivalent to per-voice
+	; (sample * envelope) >> 8. That discarded product_l before other voices could
+	; add into it. The new path accumulates sign_extend(product16) into r7:r6:r5
+	; and shifts once after all voices, preserving sub-LSB energy across voices.
 	mov b,r4                           ; 2 (b = envelopeLevel)
 
 	jb a.7,signedMulNegBranch'Idx'$    ; 2 (jump not taken → positive path)
 
 	; -- sample 为正路径 --
 	mul ab                             ; 4
-	xch a,b                            ; 1 (★ 优化 [2]: 省 1 周期)
-	mov b,#0                           ; 2 (b = 0x00 符号扩展)
-	sjmp signedMulEnd'Idx'$            ; 2
+	add a,r5                           ; 1 (acc_l += product_l)
+	mov r5,a                           ; 1
+	; Optimization [3]: MUL AB leaves product_h in B. XCH A,B is a 1-byte/1-cycle
+	; way to load product_h into A while product_l is no longer needed in A.
+	xch a,b                            ; 1 (a = product_h)
+	addc a,r6                          ; 1 (acc_m += product_h + carry)
+	mov r6,a                           ; 1
+	; Positive product has a 0x00 sign extension. CLR A is the shortest way to
+	; form that byte while preserving carry into the accumulator high byte.
+	clr a                              ; 1
+	addc a,r7                          ; 1 (acc_h += carry)
+	mov r7,a                           ; 1
+	sjmp signedMulAccEnd'Idx'$         ; 2
 
 signedMulNegBranch'Idx'$:
 	; -- sample 为负路径 --
-	cpl a                              ; 1
-	inc a                              ; 1 (a = |sample|)
+	; Optimization [7]: for negative sample, signed_sample = unsigned_sample - 256,
+	; so sample*env = unsigned_sample*env - (env << 8). Accumulate the unsigned
+	; product first, then subtract env from the accumulator middle byte.
+	; Register state on entry:
+	;   A  = sample as raw two's-complement byte (0x80..0xFF)
+	;   B  = envelopeLevel (copied from r4 before the sign branch)
+	;   r4 = envelopeLevel, preserved because MUL overwrites B
+	;   r7:r6:r5 = 24-bit accumulator
+	; Treating A as unsigned lets MUL AB produce unsigned_sample*env in B:A. The
+	; correction term env<<8 is then subtracted from r7:r6:r5 after the unsigned
+	; product has been added. That is faster than taking abs(sample), multiplying,
+	; then two's-complement negating the 16-bit product.
 	mul ab                             ; 4
-	cpl a                              ; 1
-	add a,#1                           ; 2 (取反乘积低字节)
-	xch a,b                            ; 1 (★ 优化 [2]: 省 1 周期)
-	cpl a                              ; 1
-	addc a,#0                          ; 2 (取反乘积高字节)
-	mov b,#0xFF                        ; 2 (b = 0xFF 符号扩展)
-signedMulEnd'Idx'$:
-
-	; 阶段 D: 累加到 mixOut (5 周期, ★ 优化 [1])
-	; 原版: 6 周期 (add+mov 到内存 + mov a,b + addc+mov 到内存)
-	add a,r5                           ; 1 (mixOut_l += result)
+	; Add P_lo into acc_l. Any carry must propagate through P_hi into acc_m.
+	add a,r5                           ; 1 (acc_l += product_l)
 	mov r5,a                           ; 1
-	mov a,r6                           ; 1 (加载 mixOut_h, MOV A,Rn = 1 周期)
-	addc a,b                           ; 1 (mixOut_h += sign_ext + carry)
+	; Move P_hi from B to A without a two-byte MOV A,B. B is no longer needed for
+	; the product after this point; r4 still has envelopeLevel for the correction.
+	xch a,b                            ; 1 (a = product_h)
+	addc a,r6                          ; 1 (acc_m += product_h + carry)
 	mov r6,a                           ; 1
+	; Add the carry from acc_m into acc_h. This is still the unsigned product add;
+	; the signed correction is performed by the following subtract block.
+	clr a                              ; 1
+	addc a,r7                          ; 1 (acc_h += carry from unsigned product)
+	mov r7,a                           ; 1
+	; Subtract env<<8 from the 24-bit accumulator. Low byte is unaffected because
+	; the correction term has a zero low byte. Borrow from acc_m propagates into
+	; acc_h via SUBB A,#0.
+	clr c                              ; 1
+	mov a,r6                           ; 1
+	subb a,r4                          ; 1 (acc_m -= env)
+	mov r6,a                           ; 1
+	mov a,r7                           ; 1
+	subb a,#0                          ; 2 (borrow from env<<8 subtract)
+	mov r7,a                           ; 1
+signedMulAccEnd'Idx'$:
 
 	; 阶段 E: 相位推进 (9 周期)
 	mov a,(pSndUnit+pIncrement_frac)   ; 1
@@ -159,7 +207,8 @@ signedMulEnd'Idx'$:
 	jc waveTablePosAdjustEnd'Idx'$       ; 2 (跳: pos < 21869)
 
 	; -- 卷绕回循环段 (6 周期, 极低频率触发) --
-	clr c
+	; The preceding compare reaches this path only when pos >= WAVETABLE_LEN, so
+	; carry is already clear. Do not clear it again before subtracting LOOP_LEN.
 	mov a,(pSndUnit+pWavetablePos_int_l) ; 1
 	subb a,#WAVETABLE_LOOP_LEN           ; 1
 	mov (pSndUnit+pWavetablePos_int_l),a ; 1
@@ -170,6 +219,14 @@ waveTablePosAdjustEnd'Idx'$:
 soundUnitProcessEnd'Idx'$:
 
 .endm  ; .irp 结束
+
+	; ---- 24-bit accumulator 统一 >> 8，低 8 位跨声道累加后再丢弃 ----
+	; Optimization [2]: only now discard acc_l. This turns r7:r6:r5 >> 8 into the
+	; signed 16-bit mixOut expected by the compressor/clip path: r6:r5 = r7:r6.
+	mov a,r6                          ; r5 = mixOut_l
+	mov r5,a
+	mov a,r7                          ; r6 = mixOut_h
+	mov r6,a
 
 	; ---- 将原始 mixOut 写回内存供 VisualizeSound() 读取 (4 周期) ----
 	;     在 >>1/裁剪/DC偏移之前写回，保持与原版一致: Visualization 用原始值
@@ -232,47 +289,41 @@ compress_peak_keep$:
 
 	mov	a,r6
 	mov	r0,a
-	mov	a,r1
-	mov	b,a
+	mov	b,r1
 	mov	a,r5
 	mul	ab
-	mov	a,b
+	xch	a,b
 	mov	r5,a
 	mov	a,r0
 	jz	compress_unsigned_high_done_neg$
-	mov	a,r1
-	mov	b,a
+	mov	b,r1
 	mov	a,r0
 	mul	ab
 	add	a,r5
 	mov	r5,a
 compress_unsigned_high_done_neg$:
-	mov	r6,#0
-
-	; Restore sign.
+	; Restore sign. The scaled magnitude is 8-bit in r5. Avoid pre-clearing r6:
+	; the common non-zero path sets r6 to 0xFF directly and skips the zero fixup.
 	mov	a,r5
 	cpl	a
 	add	a,#1
 	mov	r5,a
-	mov	a,r6
-	cpl	a
-	addc	a,#0
-	mov	r6,a
+	mov	r6,#0xFF
+	jnz	compress_done$
+	mov	r6,#0
 	sjmp	compress_done$
 
 compress_apply_positive$:
 	mov	a,r6
 	mov	r0,a
-	mov	a,r1
-	mov	b,a
+	mov	b,r1
 	mov	a,r5
 	mul	ab
-	mov	a,b
+	xch	a,b
 	mov	r5,a
 	mov	a,r0
 	jz	compress_unsigned_high_done_pos$
-	mov	a,r1
-	mov	b,a
+	mov	b,r1
 	mov	a,r0
 	mul	ab
 	add	a,r5
@@ -285,36 +336,39 @@ compress_done$:
 CLIP_UPPER=127
 CLIP_LOWER=-128
 
-	; ---- if (mixOut > 127) ----
-	clr	c
-	mov	a,#(CLIP_UPPER&0xFF)           ; a = 0x7F
-	subb	a,r5                         ; 0x7F - mixOut_l
-	mov	a,#((CLIP_UPPER>>8) ^ 0x80)    ; a = 0x80
-	mov	b,r6
-	xrl	b,#0x80                        ; b = mixOut_h XOR 0x80 (符号反转)
-	subb	a,b                          ; 0x80 - (mixOut_h XOR 0x80)
-	jnc	00104$                         ; 无借位 → mixOut <= 127
+	; ---- signed 16-bit saturate to [-128,127] ----
+	; Optimization [5]: because the output range is exactly one signed byte, a full
+	; signed 16-bit compare is unnecessary. Values already in range have only two
+	; possible byte patterns:
+	;   0x00:00..0x00:7F  => 0..127
+	;   0xFF:80..0xFF:FF  => -128..-1
+	; Every other high-byte pattern is out of range; the high-byte sign bit tells
+	; whether to clamp to +127 or -128. This shortens the common no-clip path.
+	mov	a,r6
+	jz	clip_high_zero$
+	cjne	a,#0xFF,clip_high_other$
+	mov	a,r5
+	jb	acc.7,clip_done$                ; -128..-1
+	sjmp	clip_lower$                   ; -256..-129
 
-	; ----- mixOut = 127 -----
+clip_high_zero$:
+	mov	a,r5
+	jnb	acc.7,clip_done$               ; 0..127
+
+clip_upper$:
 	mov	r5,#(CLIP_UPPER&0xFF)          ; 0x7F
 	mov	r6,#(CLIP_UPPER>>8)            ; 0x00
-	sjmp	00107$
+	sjmp	clip_done$
 
-00104$:
-	; ---- else if (mixOut < -128) ----
-	clr	c
-	mov	a,r5
-	subb	a,#(CLIP_LOWER&0xFF)          ; mixOut_l - 0x80
-	mov	a,r6
-	xrl	a,#0x80                        ; mixOut_h XOR 0x80 (符号反转)
-	subb	a,#((CLIP_LOWER>>8)&0x7F)    ; (mixOut_h XOR 0x80) - 0x7F
-	jnc	00107$                         ; 无借位 → mixOut >= -128
+clip_high_other$:
+	jb	acc.7,clip_lower$               ; high byte is negative and not 0xFF
+	sjmp	clip_upper$
 
-	; ----- mixOut = -128 -----
+clip_lower$:
 	mov	r5,#(CLIP_LOWER&0xFF)          ; 0x80
 	mov	r6,#(CLIP_LOWER>>8)            ; 0xFF
 
-00107$:
+clip_done$:
 	; ---- 3. DC 偏移: mixOut + 128 → [0, 255] (4 周期, ★ 优化 [3]) ----
 	mov a,r5
 	add a,#128                         ; 1 (a = mixOut_l + 128; 绝不溢出)

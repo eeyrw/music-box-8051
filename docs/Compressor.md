@@ -209,6 +209,8 @@ The compressor block:
 
 The compressor block does not update the envelope and does not look up the gain table. It also does not use `acall` or `ret`, so it does not add stack traffic inside the Timer0 ISR.
 
+The current compressor assembly includes small speed-oriented move/sign-restore optimizations. The detailed instruction-count notes are in `docs/SynthAsmOptimization.md`.
+
 After the macro, `Synth.inc` runs the same signed clamp used by the non-compressor path:
 
 ```text

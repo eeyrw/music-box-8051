@@ -81,7 +81,8 @@ static int8_t interpolate_sample(uint16_t pos, uint8_t frac)
 
 static void synth_reference_step(Synthesizer *synth)
 {
-	int16_t mix = 0;
+	int32_t acc = 0;
+	int16_t mix;
 	uint16_t mag;
 	uint8_t i;
 
@@ -94,7 +95,7 @@ static void synth_reference_step(Synthesizer *synth)
 
 		int8_t sample = interpolate_sample(unit->split.wavetablePos_int,
 			unit->split.wavetablePos_frac);
-		mix += (int8_t)high_s8_u8(sample, env);
+		acc += (int16_t)sample * (uint16_t)env;
 
 		uint16_t pos = unit->split.wavetablePos_int;
 		uint16_t frac = (uint16_t)unit->split.wavetablePos_frac
@@ -108,6 +109,7 @@ static void synth_reference_step(Synthesizer *synth)
 		unit->split.wavetablePos_int = pos;
 	}
 
+	mix = (int16_t)(acc >> 8);
 	synth->mixOut = mix;
 	mag = mix < 0 ? (uint16_t)(-mix) : (uint16_t)mix;
 	if (mag > synth->compressorPeak)
@@ -285,6 +287,14 @@ static void TestSynthAsmStep(void)
 	synth_reference_step(&expectedSynth);
 	SynthAsm();
 	compare_synth_step("multi voice", &expectedSynth);
+
+	reset_test_synth();
+	for (uint8_t i = 0; i < POLY_NUM; i++)
+		setup_synth_case(i, 20, 0, 0x0100, 1);
+	copy_synth(&expectedSynth, &synthForAsm);
+	synth_reference_step(&expectedSynth);
+	SynthAsm();
+	compare_synth_step("low envelope accumulation", &expectedSynth);
 
 	reset_test_synth();
 	setup_synth_case(0, WAVETABLE_LEN - 1, 250, 0x020a, 255);

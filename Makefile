@@ -6,6 +6,13 @@ LD			= sdld
 HEX          = packihx
 BIN          = $(CP) -O binary -S
 
+ifeq ($(OS),Windows_NT)
+PYTHON ?= py -3
+PS     ?= powershell -NoProfile -ExecutionPolicy Bypass -Command
+else
+PYTHON ?= python3
+endif
+
 # define mcu, specify the target processor
 F_CPU   ?= 16000000
 MCU          = mcs51
@@ -148,21 +155,32 @@ endif
 
 
 
+ifeq ($(OS),Windows_NT)
+%.rel: %.c Makefile
+	@echo [CC] $(notdir $<)
+# Output dependency
+	@$(CC) $(CFLAGS) $(INC_DIR) -MM -c $< | $(PS) "$$input | ForEach-Object { $$_ -replace '^[^:]*:', '$@:' } | Set-Content -Encoding ASCII '$(patsubst %.c,%.d,$<)'"
+# Do compiling
+	@$(CC) $(CFLAGS) $(INC_DIR) -c $< -o $@
+
+$(COMPRESSOR_STAMP): FORCE
+	@$(PS) "$$genArgs = '$(COMPRESSOR_GEN_ARGS)'; function NewerThan($$a, $$b) { (Test-Path $$a) -and ((-not (Test-Path $$b)) -or ((Get-Item $$a).LastWriteTime -gt (Get-Item $$b).LastWriteTime)) }; $$first = if (Test-Path '$@') { Get-Content '$@' -TotalCount 1 } else { '' }; if ((-not (Test-Path '$@')) -or (-not (Test-Path 'Synthesizer/CompressorGenerated.h')) -or (-not (Test-Path 'Synthesizer/CompressorGenerated.c')) -or ($$first -ne $$genArgs) -or (NewerThan 'tools/gen_compressor.py' '$@') -or (NewerThan 'Makefile' '$@')) { Write-Host '[GEN] CompressorGenerated'; $$genArgv = $$genArgs -split ' '; & $(PYTHON) tools/gen_compressor.py @genArgv; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE }; Set-Content -Encoding ASCII '$@' $$genArgs }"
+else
 %.rel: %.c Makefile
 	@echo [CC] $(notdir $<)
 # Output dependency
 	@$(CC) $(CFLAGS) $(INC_DIR) -MM -c $< | sed 's|^[^:]*:|$@:|' > $(patsubst %.c,%.d,$<)
 # Do compiling
 	@$(CC) $(CFLAGS) $(INC_DIR) -c $< -o $@
-	
 
 $(COMPRESSOR_STAMP): FORCE
 	@args='$(COMPRESSOR_GEN_ARGS)'; \
 	if [ ! -f $@ ] || [ ! -f Synthesizer/CompressorGenerated.h ] || [ ! -f Synthesizer/CompressorGenerated.c ] || [ "x$$(sed -n '1p' $@ 2>/dev/null)" != "x$$args" ] || [ tools/gen_compressor.py -nt $@ ] || [ Makefile -nt $@ ]; then \
 		echo [GEN] CompressorGenerated; \
-		python3 tools/gen_compressor.py $$args; \
+		$(PYTHON) tools/gen_compressor.py $$args; \
 		printf '%s\n' "$$args" > $@; \
 	fi
+endif
 
 $(COMPRESSOR_GEN): $(COMPRESSOR_STAMP)
 	@true
@@ -193,7 +211,7 @@ STCGAL_BAUD   ?= 115200
 STCGAL_PROTO  ?= stc8d
 STCGAL_BOOT_CMD ?= auto
 
-BOOT_SCRIPT = python3 tools/boot.py $(STCGAL_PORT) $(STCGAL_BAUD)
+BOOT_SCRIPT = $(PYTHON) tools/boot.py $(STCGAL_PORT) $(STCGAL_BAUD)
 
 boot:
 	@echo [BOOT] sending RESET frame to $(STCGAL_PORT)
@@ -205,6 +223,20 @@ flash: $(PROJECT_NAME).ihx
 	@echo [FLASH] $(PROJECT_NAME).ihx via stcgal
 	stcgal -P $(STCGAL_PROTO) -p $(STCGAL_PORT) -b $(STCGAL_BAUD) $<
 	
+ifeq ($(OS),Windows_NT)
+clean:
+	@echo [RM] OBJ
+	@$(PS) "Remove-Item -Force -Recurse -ErrorAction SilentlyContinue $(foreach f,$(OBJECTS),'$(f)')"
+	@$(PS) "Remove-Item -Force -Recurse -ErrorAction SilentlyContinue $(foreach f,$(TEST_OBJECTS),'$(f)')"
+	@echo [RM] HEX
+	@$(PS) "Remove-Item -Force -Recurse -ErrorAction SilentlyContinue '$(PROJECT_NAME).ihx'"
+	@echo [RM] Intermediate outputs
+	@$(PS) "Remove-Item -Force -Recurse -ErrorAction SilentlyContinue $(foreach f,$(OTHER_OUTPUTS),'$(f)')"
+	@$(PS) "Remove-Item -Force -Recurse -ErrorAction SilentlyContinue $(foreach f,$(TEST_OUTPUTS),'$(f)')"
+	@$(PS) "Remove-Item -Force -Recurse -ErrorAction SilentlyContinue '$(PROJECT_NAME).lk' '$(PROJECT_NAME).map' '$(PROJECT_NAME).cdb' '$(PROJECT_NAME).hex' '$(PROJECT_NAME).bin' '$(PROJECT_NAME).mem'"
+	@$(PS) "Remove-Item -Force -Recurse -ErrorAction SilentlyContinue $(foreach f,$(DEPS),'$(f)')"
+	@$(PS) "Remove-Item -Force -Recurse -ErrorAction SilentlyContinue $(foreach f,$(TEST_DEPS),'$(f)')"
+else
 clean:
 	@echo [RM] OBJ
 	@-rm -rf $(OBJECTS)
@@ -222,3 +254,4 @@ clean:
 	@-rm -rf $(PROJECT_NAME).mem
 	@-rm -rf $(DEPS)
 	@-rm -rf $(TEST_DEPS)
+endif

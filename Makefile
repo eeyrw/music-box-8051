@@ -7,7 +7,7 @@ HEX          = packihx
 BIN          = $(CP) -O binary -S
 
 ifeq ($(OS),Windows_NT)
-PYTHON ?= py -3
+PYTHON ?= D:/Python310/python.exe
 PS     ?= powershell -NoProfile -ExecutionPolicy Bypass -Command
 else
 PYTHON ?= python3
@@ -181,10 +181,6 @@ $(COMPRESSOR_STAMP): FORCE
 		printf '%s\n' "$$args" > $@; \
 	fi
 endif
-
-$(COMPRESSOR_GEN): $(COMPRESSOR_STAMP)
-	@true
-
 
 
 %.rel: %.s

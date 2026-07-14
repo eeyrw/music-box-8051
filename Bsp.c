@@ -3,7 +3,7 @@
 #include "Bsp.h"
 #include "Protocol.h"
 
-#define MAIN_Fosc 22118400UL //定义主时钟
+#define MAIN_Fosc 33177600UL //定义主时钟
 #define BaudRate1 115200UL   //选择波特率
 
 #define Timer2_Reload (65536UL - (MAIN_Fosc / 4 / BaudRate1)) //Timer 2 重装值， 对应300KHZ

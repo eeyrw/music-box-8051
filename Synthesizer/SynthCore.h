@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #define POLY_NUM 8
+#define USE_DITHERING 0
 
 // ================================================================
 // ADSR 包络默认参数 — 修改下面四个时长即可
@@ -13,6 +14,7 @@
 // ================================================================
 
 #define ADSR_TICK_MS              5
+#define COMPRESSOR_TICK_MS        1
 #define ADSR_ATTACK_MS           100
 #define ADSR_DECAY_MS            200
 #define ADSR_RELEASE_MS         240
@@ -91,6 +93,9 @@ typedef struct _Synthesizer
 	int16_t mixOut;
 	uint8_t lastSoundUnit;
 	uint16_t lfsr;
+	uint8_t compressorEnv;
+	uint8_t compressorGain;
+	uint8_t compressorTick;
 } Synthesizer;
 
 typedef struct _VoiceState

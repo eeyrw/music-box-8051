@@ -179,19 +179,14 @@ soundUnitProcessEnd'Idx'$:
 ; 后处理: mixOut 仍在 r6:r5 中 (r5 = 低字节, r6 = 高字节)
 ;====================================================================
 
-	; ---- 1. mixOut >>= 1 (算术右移, 带符号扩展) (7 周期) ----
-	mov a,r6                           ; 1 (A = mixOut 高字节)
-	mov c,a.7                          ; 1 (C = 符号位)
-	rrc a                              ; 1 (高字节右移)
-	mov r6,a                           ; 1
-
-	mov a,r5                           ; 1 (A = mixOut 低字节)
-	rrc a                              ; 1 (低字节右移, 带符号位)
-	mov r5,a                           ; 1
-
-	; ---- 2. 裁剪到 [-128, 127] ----
+	; ---- 1. 压缩并最终限幅到 [-128, 127] ----
 	; 临界值: CLIP_UPPER=127 (0x007F), CLIP_LOWER=-128 (0xFF80)
 	; mixOut 在 r6:r5 中 (r6=高, r5=低)
+
+.ifne USE_SEGMENT_COMPRESSOR
+	.include "CompressorGenerated.inc"
+	COMPRESS_R6R5_TO_R6R5
+.endif ; USE_SEGMENT_COMPRESSOR
 
 CLIP_UPPER=127
 CLIP_LOWER=-128

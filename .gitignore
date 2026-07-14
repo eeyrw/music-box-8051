@@ -27,6 +27,7 @@ build
 *.rst
 *.cdb
 *.bin
+Synthesizer/CompressorGenerated.stamp
 *.ipch
 .DS_Store
 STC8H-cn.pdf

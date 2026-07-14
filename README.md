@@ -221,6 +221,7 @@ Full test details are documented in `docs/Testing.md`. Host-side ADSR/protocol t
 │   ├── SynthCoreAsm.s               _synthForAsm data segment (0x21)
 │   ├── SynthCore.c                  Synthesizer init + NoteOn/Off/Decay/ReleaseAll (C ADSR)
 │   ├── SynthCore.h                  SoundUnit/Synthesizer/VoiceState struct definitions
+│   ├── CompressorGenerated.*        Generated compressor macro/table/test reference
 │   ├── UpdateTick.inc               sysMs millisecond counter (ISR)
 │   ├── PeriodTimer.s                Timer0 ISR entry (bank switch)
 │   ├── PeriodTimer.h                sysMs extern declarations
@@ -234,6 +235,7 @@ Full test details are documented in `docs/Testing.md`. Host-side ADSR/protocol t
 │
 ├── tools/
 │   ├── musicbox_proto.py            Full serial protocol CLI client
+│   ├── gen_segment_compressor.py    Generate compressor macro/table from dBFS params
 │   ├── midi_player.py               Real-time MIDI playback via fast-note protocol
 │   ├── adsr_test.py                 ADSR envelope test suite
 │   ├── adsr_web.py                  Launch Web Serial ADSR editor

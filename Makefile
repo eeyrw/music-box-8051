@@ -80,6 +80,31 @@ endif
 INC_DIR  = $(patsubst %, -I%, $(INCLUDE_DIRS))
 AS_INC   = $(INC_DIR)
 
+COMPRESSOR_SEGMENTS ?= 9
+COMPRESSOR_INPUT_BITS ?= 11
+COMPRESSOR_OUTPUT_BITS ?= 8
+COMPRESSOR_OUTPUT_MIN ?= -127
+COMPRESSOR_OUTPUT_MAX ?= 127
+COMPRESSOR_PRESET ?= loud
+COMPRESSOR_THRESHOLD_DB ?=
+COMPRESSOR_RATIO ?=
+COMPRESSOR_MAKEUP_DB ?=
+COMPRESSOR_SLOPE_MODE ?= shift
+COMPRESSOR_Q8_SLOPE_STEP ?= 1
+COMPRESSOR_DB_ARGS = --preset $(COMPRESSOR_PRESET)
+ifneq ($(strip $(COMPRESSOR_THRESHOLD_DB)),)
+COMPRESSOR_DB_ARGS += --threshold-db $(COMPRESSOR_THRESHOLD_DB)
+endif
+ifneq ($(strip $(COMPRESSOR_RATIO)),)
+COMPRESSOR_DB_ARGS += --ratio $(COMPRESSOR_RATIO)
+endif
+ifneq ($(strip $(COMPRESSOR_MAKEUP_DB)),)
+COMPRESSOR_DB_ARGS += --makeup-db $(COMPRESSOR_MAKEUP_DB)
+endif
+COMPRESSOR_GEN = Synthesizer/CompressorGenerated.inc Synthesizer/CompressorTableGenerated.inc Synthesizer/CompressorGenerated.h
+COMPRESSOR_STAMP = Synthesizer/CompressorGenerated.stamp
+COMPRESSOR_GEN_ARGS = --segments $(COMPRESSOR_SEGMENTS) --input-bits $(COMPRESSOR_INPUT_BITS) --output-bits $(COMPRESSOR_OUTPUT_BITS) --output-min $(COMPRESSOR_OUTPUT_MIN) --output-max $(COMPRESSOR_OUTPUT_MAX) $(COMPRESSOR_DB_ARGS) --slope-mode $(COMPRESSOR_SLOPE_MODE) --q8-slope-step $(COMPRESSOR_Q8_SLOPE_STEP) --out-asm Synthesizer/CompressorGenerated.inc --out-table Synthesizer/CompressorTableGenerated.inc --out-header Synthesizer/CompressorGenerated.h
+
 # run from Flash
 DDEFS	 = $(patsubst %, -D%, $(DEFS))
 DEPS  = $(SRC:.c=.d)
@@ -106,15 +131,19 @@ all: $(OBJECTS) $(PROJECT_NAME).ihx $(PROJECT_NAME).hex $(PROJECT_NAME).bin
 # Don't delete dependency files
 .PRECIOUS: %.d
 
+.PHONY: FORCE
+
 # Don't rebuild deps if cleaning
 ifneq ($(MAKECMDGOALS),clean)
 -include $(DEPS)
 # Beacuse SDCC's assembler has no way to auto output dependency info,
 # the dependency is manually written here.	
-Synthesizer/PeriodTimer.rel: Synthesizer/SynthCore.inc Synthesizer/8051.inc Synthesizer/Synth.inc Synthesizer/UpdateTick.inc Synthesizer/WaveTable.inc
-Synthesizer/Synth_testbench.rel: Synthesizer/SynthCore.inc Synthesizer/8051.inc Synthesizer/Synth.inc Synthesizer/UpdateTick.inc
+Synthesizer/PeriodTimer.rel: Synthesizer/SynthCore.inc Synthesizer/8051.inc Synthesizer/Synth.inc Synthesizer/UpdateTick.inc Synthesizer/WaveTable.inc Synthesizer/CompressorGenerated.inc
+Synthesizer/Synth_testbench.rel: Synthesizer/SynthCore.inc Synthesizer/8051.inc Synthesizer/Synth.inc Synthesizer/UpdateTick.inc Synthesizer/CompressorGenerated.inc
 Synthesizer/UpdateTick_testbench.rel: Synthesizer/SynthCore.inc Synthesizer/8051.inc Synthesizer/Synth.inc Synthesizer/UpdateTick.inc
-Synthesizer/SynthCoreAsm.rel: Synthesizer/SynthCore.inc Synthesizer/WaveTable.inc
+Synthesizer/SynthCoreAsm.rel: Synthesizer/SynthCore.inc Synthesizer/WaveTable.inc Synthesizer/CompressorTableGenerated.inc
+Synthesizer/SynthCore.rel: Synthesizer/CompressorGenerated.h
+Synthesizer/AlgorithmTest.rel: Synthesizer/CompressorGenerated.h
 endif
 
 
@@ -127,6 +156,18 @@ endif
 # Do compiling
 	@$(CC) $(CFLAGS) $(INC_DIR) -c $< -o $@
 	
+
+$(COMPRESSOR_STAMP): FORCE
+	@args='$(COMPRESSOR_GEN_ARGS)'; \
+	if [ ! -f $@ ] || [ ! -f Synthesizer/CompressorGenerated.inc ] || [ ! -f Synthesizer/CompressorTableGenerated.inc ] || [ ! -f Synthesizer/CompressorGenerated.h ] || [ "x$$(sed -n '1p' $@ 2>/dev/null)" != "x$$args" ] || [ tools/gen_segment_compressor.py -nt $@ ] || [ Makefile -nt $@ ]; then \
+		echo [GEN] CompressorGenerated; \
+		python3 tools/gen_segment_compressor.py $$args; \
+		printf '%s\n' "$$args" > $@; \
+	fi
+
+$(COMPRESSOR_GEN): $(COMPRESSOR_STAMP)
+	@true
+
 
 
 %.rel: %.s

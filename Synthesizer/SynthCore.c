@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "WaveTable.h"
 #include "Bsp.h"
+#include "CompressorGenerated.h"
 
 __xdata VoiceState voiceState[POLY_NUM];
 
@@ -106,18 +107,70 @@ void SynthInit(Synthesizer *synth)
 	}
 	synth->lastSoundUnit = 0;
 	synth->mixOut = 0;
+	synth->lfsr = 0;
+	synth->compressorEnv = 0;
+	synth->compressorGain = SynthCompressorGainTable[0];
+	synth->compressorTick = 0;
 }
 
 void SynthDitherInit(Synthesizer *synth, uint16_t seed)
 {
+#if USE_DITHERING
 	synth->lfsr = seed ? seed : 0xACE1;
+#else
+	(void)seed;
+	synth->lfsr = 0;
+#endif
 }
 
 static uint32_t nextTickMs;
+static uint32_t nextCompressorTickMs;
+
+static uint8_t compressorLevelFromMix(void)
+{
+	int16_t x = synthForAsm.mixOut;
+	uint16_t mag;
+
+	if (x < 0)
+		mag = (uint16_t)(-x);
+	else
+		mag = (uint16_t)x;
+
+	mag >>= SYNTH_COMPRESSOR_ENV_SHIFT;
+	return mag > 255 ? 255 : (uint8_t)mag;
+}
+
+static void SynthCompressorTick(void)
+{
+	uint8_t level = compressorLevelFromMix();
+	uint8_t env = synthForAsm.compressorEnv;
+	uint8_t step;
+
+	if (level > env) {
+		step = (uint8_t)((level - env) >> 2);
+		if (step == 0)
+			step = 1;
+		env += step;
+	} else if (env > level) {
+		step = (uint8_t)((env - level) >> 5);
+		if (step == 0)
+			step = 1;
+		env -= step;
+	}
+
+	synthForAsm.compressorEnv = env;
+	synthForAsm.compressorGain = SynthCompressorGainTable[env];
+}
 
 void SynthEnvelopeTick(void)
 {
 	uint32_t now = GetSysMs();
+	while ((int32_t)(now - nextCompressorTickMs) >= 0)
+	{
+		SynthCompressorTick();
+		nextCompressorTickMs += COMPRESSOR_TICK_MS;
+	}
+
 	while ((int32_t)(now - nextTickMs) >= 0)
 	{
 		GenDecayEnvlopeAsm();
@@ -128,6 +181,9 @@ void SynthEnvelopeTick(void)
 void SynthEnvReset(void)
 {
 	nextTickMs = GetSysMs();
+	nextCompressorTickMs = nextTickMs;
+	synthForAsm.compressorEnv = 0;
+	synthForAsm.compressorGain = SynthCompressorGainTable[0];
 }
 
 void SynthReleaseAllAsm(void)

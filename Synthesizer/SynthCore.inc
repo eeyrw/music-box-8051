@@ -20,6 +20,7 @@
 
 	DEBUG_SYNTH=0
 	USE_LINEAR_INTEROP=1
+	USE_SEGMENT_COMPRESSOR=1
 	USE_DITHERING=0
 
 	; ---- ADSR 时钟 ----
@@ -81,6 +82,9 @@
 	pLastSoundUnit=unitSz*POLY_NUM+2  ; 74
 	pLFSR_l=unitSz*POLY_NUM+3         ; 75
 	pLFSR_h=unitSz*POLY_NUM+4         ; 76
+	pCompressorEnv=unitSz*POLY_NUM+5  ; 77
+	pCompressorGain=unitSz*POLY_NUM+6 ; 78
+	pCompressorTick=unitSz*POLY_NUM+7 ; 79
 
 	SynthAbsAddr = 0x21
-	SynthTotalSize = unitSz*POLY_NUM+5 ; 77
+	SynthTotalSize = unitSz*POLY_NUM+8 ; 80

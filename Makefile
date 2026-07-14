@@ -20,11 +20,11 @@ ARCH = mcs51
 MODEL  = large
 # ------------------------------------------------------
 # Memory Layout
-# PRG Size = 32K Bytes
+# PRG Size = 64K Bytes
 CODE_SIZE = --code-loc 0x0000 --code-size 65536
 # INT-MEM Size = 256 Bytes
 IRAM_SIZE = --idata-loc 0x0000  --iram-size 256
-# EXT-MEM Size = 1K Bytes
+# EXT-MEM Size = 3K Bytes
 XRAM_SIZE = --xram-loc 0x0000 --xram-size 3072
 
 # all the files will be generated with this name (main.elf, main.bin, main.hex, etc)

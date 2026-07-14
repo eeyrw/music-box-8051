@@ -311,7 +311,7 @@ ADSR rate 使用 unsigned 8.8 定点数，单位是 `envelopePhase / tick`。原
 raw = ceil(distance * ADSR_TICK_MS * 256 / duration_ms)
 ```
 
-各阶段的 `distance`：Attack 为 `ADSR_ENV_MAX`，Decay 为 `ADSR_ENV_MAX - ADSR_SUSTAIN_THRESHOLD`，Sustain decay 为 `ADSR_SUSTAIN_THRESHOLD`，Release 为 `ADSR_ENV_MAX`。例如默认 Sustain decay 2000ms：`ceil(100 * 5 * 256 / 2000) = 64`，即 `0.25 envelope/tick`。
+各阶段的 `distance`：Attack 为 `ADSR_ENV_MAX`，Decay 为 `ADSR_ENV_MAX - ADSR_SUSTAIN_THRESHOLD`，Sustain decay 为 `ADSR_SUSTAIN_THRESHOLD`，Release 为 `ADSR_ENV_MAX`。当前默认值中 Sustain decay 为 0，表示 sustain 阶段保持不衰减；例如默认 Attack 20ms：`ceil(128 * 5 * 256 / 20) = 8192`，即 `32 envelope/tick`。
 
 实际阶段时长近似为：
 

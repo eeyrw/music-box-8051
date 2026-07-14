@@ -15,13 +15,13 @@
 
 #define ADSR_TICK_MS              5
 #define COMPRESSOR_TICK_MS        1
-#define ADSR_ATTACK_MS           100
+#define ADSR_ATTACK_MS           20
 #define ADSR_DECAY_MS            200
-#define ADSR_RELEASE_MS         240
+#define ADSR_RELEASE_MS         200
 #define ADSR_SUSTAIN_DECAY_MS    0
 
 #define ADSR_ENV_MAX            128
-#define ADSR_SUSTAIN_THRESHOLD  100
+#define ADSR_SUSTAIN_THRESHOLD  110
 
 #define ADSR_FRAC_DEN  256
 #define ADSR_RATE_MIN_PROGRESS ADSR_FRAC_DEN

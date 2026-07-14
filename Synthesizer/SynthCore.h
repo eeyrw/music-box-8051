@@ -15,10 +15,16 @@
 
 #define ADSR_TICK_MS              5
 #define COMPRESSOR_TICK_MS        1
+#define COMPRESSOR_ATTACK_MS      4
+#define COMPRESSOR_RELEASE_MS    32
 #define ADSR_ATTACK_MS           20
 #define ADSR_DECAY_MS            200
 #define ADSR_RELEASE_MS         200
 #define ADSR_SUSTAIN_DECAY_MS    0
+
+#if COMPRESSOR_TICK_MS == 0 || COMPRESSOR_ATTACK_MS == 0 || COMPRESSOR_RELEASE_MS == 0
+#error "Compressor timing constants must be non-zero"
+#endif
 
 #define ADSR_ENV_MAX            128
 #define ADSR_SUSTAIN_THRESHOLD  110

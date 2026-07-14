@@ -11,11 +11,8 @@ Player mainPlayer;
 
 void VisualizeSound(void)
 {
-	int16_t t;
-	t = synthForAsm.mixOut;
-	if (t < 0)
-		t = -t;
-	t = t << 1;
+	uint16_t t;
+	t = (uint16_t)synthForAsm.compressorEnv << 1;
 	PWMA_CCR4H = (t >> 8) & 0xff;
 	PWMA_CCR4L = t & 0xff;
 }

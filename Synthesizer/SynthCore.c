@@ -141,6 +141,17 @@ static uint8_t compressorLevelFromMix(void)
 	return mag > 255 ? 255 : (uint8_t)mag;
 }
 
+static uint8_t compressorStepFromMs(uint8_t diff, uint16_t timeMs)
+{
+	uint16_t step = ((uint16_t)diff * COMPRESSOR_TICK_MS) / timeMs;
+
+	if (step == 0)
+		step = 1;
+	if (step > diff)
+		step = diff;
+	return (uint8_t)step;
+}
+
 static void SynthCompressorTick(void)
 {
 	uint8_t level = compressorLevelFromMix();
@@ -148,14 +159,10 @@ static void SynthCompressorTick(void)
 	uint8_t step;
 
 	if (level > env) {
-		step = (uint8_t)((level - env) >> 2);
-		if (step == 0)
-			step = 1;
+		step = compressorStepFromMs(level - env, COMPRESSOR_ATTACK_MS);
 		env += step;
 	} else if (env > level) {
-		step = (uint8_t)((env - level) >> 5);
-		if (step == 0)
-			step = 1;
+		step = compressorStepFromMs(env - level, COMPRESSOR_RELEASE_MS);
 		env -= step;
 	}
 

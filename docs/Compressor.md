@@ -105,10 +105,12 @@ make COMPRESSOR_PRESET=loud
 
 ## Envelope Follower
 
-`SynthCompressorTick()` runs every `COMPRESSOR_TICK_MS`:
+`SynthCompressorTick()` runs every `COMPRESSOR_TICK_MS`. The attack and release smoothing constants are configured in milliseconds:
 
 ```c
 #define COMPRESSOR_TICK_MS 1
+#define COMPRESSOR_ATTACK_MS 4
+#define COMPRESSOR_RELEASE_MS 32
 ```
 
 The ISR updates `synthForAsm.compressorPeak` on every 32 kHz sample:
@@ -141,13 +143,15 @@ The envelope update is asymmetric:
 
 ```c
 if (level > env) {
-    env += max(1, (level - env) >> 2);   // attack
+    env += step_from_ms(level - env, COMPRESSOR_ATTACK_MS);
 } else if (env > level) {
-    env -= max(1, (env - level) >> 5);   // release
+    env -= step_from_ms(env - level, COMPRESSOR_RELEASE_MS);
 }
+
+step_from_ms(diff, time_ms) = clamp(diff * COMPRESSOR_TICK_MS / time_ms, 1, diff)
 ```
 
-At 1 ms update rate, this is a fast attack and slower release. It is intended to catch peaks quickly while avoiding audio-rate gain modulation.
+At the default 1 ms update rate, this keeps the old behavior: attack advances by about `diff / 4`, and release by about `diff / 32`. The minimum step of 1 guarantees convergence even when the remaining difference is smaller than the configured time constant.
 
 ## Gain Table
 

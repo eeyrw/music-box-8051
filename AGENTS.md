@@ -466,9 +466,9 @@ State machine: `READY_TO_SWITCH` → `SWITCHING` → `SCORE_PREV/NEXT` → `READ
 
 1. Phase A: scan all 8 voices for `voiceState[].envelopeState == SILENT` (XRAM) — reuse immediately
 2. Phase B: if none free, call `stealVoice()` — strategy selected by `NOTEON_STEAL_STRATEGY` macro (default: steal oldest `allocStamp`)
-3. `voiceState[idx].allocStamp = ++alloc_stamp` (inside `EA=0`/`EA=1` critical section)
+3. `voiceState[idx].allocStamp = ++alloc_stamp`
 
-The voice write (zeroing phase, setting `envelopeLevel=0` for ATTACK start) is inside `EA=0`/`EA=1` critical section. The free-voice scan runs outside the critical section since `envelopeState` is only set to SILENT in main-loop context (`GenDecayEnvlopeAsm` / `SynthReleaseAllAsm`), not in ISR.
+`NoteOnAsm()` writes the selected voice's 8-bit `envelopeLevel = 0` before updating multi-byte `increment` and `wavetablePos` fields. The ISR checks `envelopeLevel` first and skips zero-envelope voices, so it cannot use a half-updated voice; no broad `EA=0` critical section is needed for NoteOn voice writes. The free-voice scan uses `envelopeState == SILENT` and runs outside a critical section since `envelopeState` is only set to SILENT in main-loop context (`GenDecayEnvlopeAsm` / `SynthReleaseAllAsm`), not in ISR.
 
 **Why not "steal the quietest"?** High notes have larger `phase increment`, so `wavetablePos` reaches `WAVETABLE_ATTACK_LEN` (21260) faster, causing their envelope decay to start earlier. Comparing `envelopeLevel` systematically discriminates against high notes. Timestamp FIFO is pitch-independent and guarantees the oldest-playing note is stolen.
 
@@ -531,6 +531,8 @@ Python CLI: `tools/musicbox_proto.py --port /dev/ttyUSB0 <command> [args...]`
 ```c
 uint32_t GetSysMs(void);  // 32-bit millisecond counter, driven by Timer0 ISR
 ```
+
+`GetSysMs()` briefly disables interrupts to read the 32-bit counter atomically and restores the previous `EA` state instead of unconditionally enabling interrupts. Compressor peak read/reset uses the same save/restore pattern for its 16-bit ISR-shared field.
 
 SPI flash driver (`SpiFlash.c`) uses `GetSysMs()` for accurate busy-wait timeouts:
 - Sector erase: 1500ms, Chip erase: 30000ms, Page program: 1000ms

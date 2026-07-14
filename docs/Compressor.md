@@ -120,12 +120,15 @@ compressorPeak = max(compressorPeak, abs(raw_mixOut))
 `SynthCompressorTick()` atomically reads and clears this peak once per compressor tick, then scales it down to a gain-table index with the generated `SYNTH_COMPRESSOR_ENV_SHIFT`:
 
 ```c
+savedEA = EA;
 EA = 0;
 mag = synthForAsm.compressorPeak;
 synthForAsm.compressorPeak = 0;
-EA = 1;
+EA = savedEA;
 level = mag >> SYNTH_COMPRESSOR_ENV_SHIFT;
 ```
+
+The saved/restore pattern keeps nested callers from accidentally enabling interrupts when they were already disabled. `SynthEnvReset()` uses the same short critical-section style when clearing the 16-bit peak during playback reset.
 
 For the current 11-bit compressor input this resolves to:
 

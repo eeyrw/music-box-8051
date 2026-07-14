@@ -130,10 +130,12 @@ static uint32_t nextCompressorTickMs;
 static uint8_t compressorLevelFromMix(void)
 {
 	uint16_t mag;
+	uint8_t savedEA = EA;
+
 	EA = 0;
 	mag = synthForAsm.compressorPeak;
 	synthForAsm.compressorPeak = 0;
-	EA = 1;
+	EA = savedEA;
 
 	mag >>= SYNTH_COMPRESSOR_ENV_SHIFT;
 	return mag > 255 ? 255 : (uint8_t)mag;
@@ -179,11 +181,15 @@ void SynthEnvelopeTick(void)
 
 void SynthEnvReset(void)
 {
+	uint8_t savedEA = EA;
+
 	nextTickMs = GetSysMs();
 	nextCompressorTickMs = nextTickMs;
 	synthForAsm.compressorEnv = 0;
 	synthForAsm.compressorGain = SynthCompressorGainTable[0];
+	EA = 0;
 	synthForAsm.compressorPeak = 0;
+	EA = savedEA;
 }
 
 void SynthReleaseAllAsm(void)
@@ -333,6 +339,7 @@ void NoteOnAsm(uint8_t note, uint8_t velocity)
 	if (velocity > 127)
 		velocity = 127;
 	vel_scaled = (uint8_t)(velocity * 2);
+	inc = WaveTable_Increment[note & 0x7F];
 
 	idx = 0;
 	while (idx < POLY_NUM && voiceState[idx].envelopeState != ENV_STATE_SILENT)
@@ -345,14 +352,11 @@ void NoteOnAsm(uint8_t note, uint8_t velocity)
 	if (alloc_stamp == 0)
 		alloc_stamp = 1;
 
-	EA = 0;
-
-	inc = WaveTable_Increment[note & 0x7F];
+	synthForAsm.SoundUnitUnionList[idx].split.envelopeLevel = 0;
 	synthForAsm.SoundUnitUnionList[idx].split.increment_frac = (uint8_t)(inc);
 	synthForAsm.SoundUnitUnionList[idx].split.increment_int = (uint8_t)(inc >> 8);
 	synthForAsm.SoundUnitUnionList[idx].split.wavetablePos_frac = 0;
 	synthForAsm.SoundUnitUnionList[idx].split.wavetablePos_int = 0;
-	synthForAsm.SoundUnitUnionList[idx].split.envelopeLevel = 0;
 
 	voiceState[idx].midiNote = note;
 	voiceState[idx].velocity = vel_scaled;
@@ -360,8 +364,6 @@ void NoteOnAsm(uint8_t note, uint8_t velocity)
 	voiceState[idx].envelopePhase = 0;
 	voiceState[idx].envelopeFrac = 0;
 	voiceState[idx].allocStamp = alloc_stamp;
-
-	EA = 1;
 }
 
 void NoteOffAsm(uint8_t note)

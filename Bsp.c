@@ -272,8 +272,10 @@ extern __data uint32_t sysMs;
 uint32_t GetSysMs(void)
 {
     uint32_t val;
+    uint8_t savedEA = EA;
+
     EA = 0;
     val = sysMs;
-    EA = 1;
+    EA = savedEA;
     return val;
 }

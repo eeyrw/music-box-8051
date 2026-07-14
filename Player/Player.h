@@ -113,20 +113,21 @@ typedef struct _Player
 
 // ======================== 公有函数 ========================
 
-extern void PlayerInit(Player *player, Synthesizer *synthesizer);
-extern void PlayerProcess(Player *player);
+/* Player lives in XRAM; keep the API xdata-specific to avoid generic pointer helpers. */
+extern void PlayerInit(Player __xdata *player, Synthesizer *synthesizer);
+extern void PlayerProcess(Player __xdata *player);
 
-extern void StartPlayScheduler(Player *player, uint8_t mode);
-extern void StopPlayScheduler(Player *player);
-extern void SchedulerPlaySong(Player *player, int32_t index);
+extern void StartPlayScheduler(Player __xdata *player, uint8_t mode);
+extern void StopPlayScheduler(Player __xdata *player);
+extern void SchedulerPlaySong(Player __xdata *player, int32_t index);
 
-extern void PlaySchedulerNextScore(Player *player);
-extern void PlaySchedulerPreviousScore(Player *player);
+extern void PlaySchedulerNextScore(Player __xdata *player);
+extern void PlaySchedulerPreviousScore(Player __xdata *player);
 
-extern void PlayScore(Player *player, ScoreStream *sspl, uint32_t offset);
-extern void StopDecode(Player *player);
+extern void PlayScore(Player __xdata *player, ScoreStream *sspl, uint32_t offset);
+extern void StopDecode(Player __xdata *player);
 
-extern void PlayerPlay(Player *player);
-extern void PlayerStop(Player *player);
+extern void PlayerPlay(Player __xdata *player);
+extern void PlayerStop(Player __xdata *player);
 
 #endif

@@ -16,7 +16,7 @@
 #define CCP_S0 0x10 //P_SW1.4
 #define CCP_S1 0x20 //P_SW1.5
 
-extern Player mainPlayer;
+extern __xdata Player mainPlayer;
 void ADC_Inilize(void);
 
 /********************* UART1中断函数************************/

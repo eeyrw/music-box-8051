@@ -28,7 +28,7 @@ static volatile uint8_t  tx_pos;
 static volatile uint8_t  tx_state;
 
 
-extern Player mainPlayer;
+extern __xdata Player mainPlayer;
 
 static uint8_t calc_csum(uint8_t start, uint8_t count)
 {
@@ -309,7 +309,7 @@ static void dispatch_command(void)
 	case CMD_GET_INFO:
 	{
 		uint8_t buf[4];
-		Player *p = &mainPlayer;
+		Player __xdata *p = &mainPlayer;
 		buf[0] = FW_VERSION_MAJOR;
 		buf[1] = FW_VERSION_MINOR;
 		buf[2] = storage_get_backend();
@@ -407,7 +407,7 @@ static void dispatch_command(void)
 
 	case CMD_SYS_INFO:
 	{
-		Player *p = &mainPlayer;
+		Player __xdata *p = &mainPlayer;
 		uint32_t ms = GetSysMs();
 		uint8_t i, active = 0;
 		uint8_t buf[14];
@@ -513,7 +513,7 @@ static void dispatch_command(void)
 
 	case CMD_GET_STATUS:
 	{
-		Player *p = &mainPlayer;
+		Player __xdata *p = &mainPlayer;
 		uint8_t buf[3];
 		buf[0] = (uint8_t)p->scheduler.currentScoreIndex;
 		buf[1] = (uint8_t)p->scheduler.maxScoreNum;

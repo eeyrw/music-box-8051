@@ -7,7 +7,7 @@
 #include "Storage.h"
 
 extern void TestProcess(void);
-Player mainPlayer;
+__xdata Player mainPlayer;
 
 void VisualizeSound(void)
 {

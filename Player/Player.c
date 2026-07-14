@@ -32,35 +32,47 @@
  * SSCR 解码器内部
  * ================================================================ */
 
-static uint8_t sscr_read_byte(SSCR_Player *d, uint8_t *out)
+static uint8_t sscr_read_byte(SSCR_Player __xdata *d, uint8_t *out)
 {
     return stream_read(&d->stream, out);
 }
 
-static uint8_t sscr_peek_byte(SSCR_Player *d, uint8_t *out)
+/* First delta byte is already consumed by the dispatch loop; continue only on 0x40. */
+static uint32_t sscr_read_delta_tail(SSCR_Player __xdata *d, uint8_t byte)
 {
-    return stream_peek(&d->stream, out);
+	uint32_t value = (uint32_t)(byte & 0x3F);
+
+	if (!(byte & 0x40))
+		return value;
+	if (!sscr_read_byte(d, &byte))
+		return value;
+	value |= (uint32_t)(byte & 0x3F) << 6;
+
+	if (!(byte & 0x40))
+		return value;
+	if (!sscr_read_byte(d, &byte))
+		return value;
+	value |= (uint32_t)(byte & 0x3F) << 12;
+
+	if (!(byte & 0x40))
+		return value;
+	if (!sscr_read_byte(d, &byte))
+		return value;
+	value |= (uint32_t)(byte & 0x3F) << 18;
+
+	return value;
 }
 
-static uint32_t sscr_read_delta(SSCR_Player *d)
+static uint32_t sscr_read_delta(SSCR_Player __xdata *d)
 {
-    uint32_t value = 0;
-    uint8_t shift = 0;
-    uint8_t byte;
+	uint8_t byte;
 
-    while (sscr_read_byte(d, &byte))
-    {
-        value |= (uint32_t)(byte & 0x3F) << shift;
-        shift += 6;
-        if (!(byte & 0x40))
-            break;
-        if (shift >= 24)
-            break;
-    }
-    return value;
+	if (!sscr_read_byte(d, &byte))
+		return 0;
+	return sscr_read_delta_tail(d, byte);
 }
 
-static uint8_t sscr_dispatch_event(SSCR_Player *d, uint8_t byte)
+static uint8_t sscr_dispatch_event(SSCR_Player __xdata *d, uint8_t byte)
 {
     uint8_t group = byte & 0x40;
     uint8_t sub   = byte & 0x3F;
@@ -105,20 +117,21 @@ static uint8_t sscr_dispatch_event(SSCR_Player *d, uint8_t byte)
     return 1;
 }
 
-static void SSCR_DecodeProcess(Player *player)
+static void SSCR_DecodeProcess(Player __xdata *player)
 {
 	SynthEnvelopeTick();
 
-	uint32_t now = GetSysMs();
-
-	SSCR_Player *d = &(player->decoder);
+	SSCR_Player __xdata *d = &(player->decoder);
 	if (d->status != STATUS_DECODING)
 		return;
+
+	uint32_t now = GetSysMs();
 
 	while (d->status == STATUS_DECODING && now >= d->nextEventMs)
 	{
 		uint8_t byte;
-        if (!sscr_peek_byte(d, &byte))
+        /* Read once and dispatch by bit7; avoiding peek+read halves stream vtable traffic. */
+        if (!sscr_read_byte(d, &byte))
         {
             d->status = STATUS_STOP;
             break;
@@ -126,11 +139,6 @@ static void SSCR_DecodeProcess(Player *player)
 
         if (byte & 0x80)
         {
-            if (!sscr_read_byte(d, &byte))
-            {
-                d->status = STATUS_STOP;
-                break;
-            }
             if (!sscr_dispatch_event(d, byte))
             {
                 d->status = STATUS_STOP;
@@ -139,7 +147,10 @@ static void SSCR_DecodeProcess(Player *player)
         }
         else
         {
-            uint32_t delta = sscr_read_delta(d);
+			/* Most score deltas fit in one byte, so keep the continuation path cold. */
+			uint32_t delta = (uint32_t)(byte & 0x3F);
+			if (byte & 0x40)
+				delta = sscr_read_delta_tail(d, byte);
             d->nextEventMs += (uint32_t)delta * 8;
         }
     }
@@ -152,21 +163,21 @@ static void SSCR_DecodeProcess(Player *player)
  * SSPL 容器 + 多曲调度器
  * ================================================================ */
 
-void PlaySchedulerNextScore(Player *player)
+void PlaySchedulerNextScore(Player __xdata *player)
 {
     player->scheduler.switchDirect = SCHEDULER_SCORE_NEXT;
     player->scheduler.status = SCHEDULER_SWITCHING;
     StopDecode(player);
 }
 
-void PlaySchedulerPreviousScore(Player *player)
+void PlaySchedulerPreviousScore(Player __xdata *player)
 {
     player->scheduler.switchDirect = SCHEDULER_SCORE_PREV;
     player->scheduler.status = SCHEDULER_SWITCHING;
     StopDecode(player);
 }
 
-static void SchedulerPlayIndex(Player *player, int32_t index)
+static void SchedulerPlayIndex(Player __xdata *player, int32_t index)
 {
     if (player->scheduler.maxScoreNum == 0)
     {
@@ -188,7 +199,7 @@ static void SchedulerPlayIndex(Player *player, int32_t index)
     player->scheduler.status = SCHEDULER_READY_TO_SWITCH;
 }
 
-void PlaySchedulerProcess(Player *player)
+void PlaySchedulerProcess(Player __xdata *player)
 {
     switch (player->scheduler.status)
     {
@@ -247,7 +258,7 @@ void PlaySchedulerProcess(Player *player)
  * 公开 API
  * ================================================================ */
 
-void StartPlayScheduler(Player *player, uint8_t mode)
+void StartPlayScheduler(Player __xdata *player, uint8_t mode)
 {
     storage_init();
     stream_init(&player->scheduler.ssplStream, storage_get_base_addr(), 0xFFFFFFFFUL);
@@ -275,7 +286,7 @@ void StartPlayScheduler(Player *player, uint8_t mode)
     player->scheduler.status = SCHEDULER_READY_TO_SWITCH;
 }
 
-void SchedulerPlaySong(Player *player, int32_t index)
+void SchedulerPlaySong(Player __xdata *player, int32_t index)
 {
     player->scheduler.targetScoreIndex = index;
     player->scheduler.switchDirect = SCHEDULER_SCORE_DIRECT;
@@ -283,13 +294,13 @@ void SchedulerPlaySong(Player *player, int32_t index)
     StopDecode(player);
 }
 
-void StopPlayScheduler(Player *player)
+void StopPlayScheduler(Player __xdata *player)
 {
     StopDecode(player);
     player->scheduler.status = SCHEDULER_STOP;
 }
 
-void PlayScore(Player *player, ScoreStream *sspl, uint32_t offset)
+void PlayScore(Player __xdata *player, ScoreStream *sspl, uint32_t offset)
 {
     if (stream_u8(sspl, offset + 0) != 'S'
      || stream_u8(sspl, offset + 1) != 'S'
@@ -314,26 +325,27 @@ void PlayScore(Player *player, ScoreStream *sspl, uint32_t offset)
 	player->decoder.status = STATUS_DECODING;
 }
 
-void StopDecode(Player *player)
+void StopDecode(Player __xdata *player)
 {
     player->decoder.status = STATUS_STOP;
     SynthReleaseAllAsm();
 }
 
-void PlayerProcess(Player *player)
+void PlayerProcess(Player __xdata *player)
 {
     SSCR_DecodeProcess(player);
-    PlaySchedulerProcess(player);
+	if (player->scheduler.status != SCHEDULER_STOP)
+		PlaySchedulerProcess(player);
 }
 
-void PlayerInit(Player *player, Synthesizer *synthesizer)
+void PlayerInit(Player __xdata *player, Synthesizer *synthesizer)
 {
     player->decoder.status = STATUS_STOP;
     SynthEnvReset();
     SynthInit(synthesizer);
 }
 
-void PlayerPlay(Player *player)
+void PlayerPlay(Player __xdata *player)
 {
     if (player->scheduler.status == SCHEDULER_STOP)
     {
@@ -341,7 +353,7 @@ void PlayerPlay(Player *player)
     }
 }
 
-void PlayerStop(Player *player)
+void PlayerStop(Player __xdata *player)
 {
     StopDecode(player);
     player->scheduler.status = SCHEDULER_STOP;

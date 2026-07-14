@@ -11,6 +11,11 @@ __xdata uint16_t AdsrAttackRateFrac;
 __xdata uint16_t AdsrDecayRateFrac;
 __xdata uint16_t AdsrReleaseRateFrac;
 __xdata uint16_t AdsrSustainDecayRateFrac;
+/* Tracks non-silent voices so ADSR ticks skip inactive XRAM state reads. */
+static __xdata uint8_t activeVoiceMask;
+
+/* 8x8 high-byte multiply helper; avoids SDCC's 16-bit __mulint call here. */
+extern uint8_t MulU8High(uint8_t a, uint8_t b);
 
 void AdsrInit(void)
 {
@@ -112,6 +117,7 @@ void SynthInit(Synthesizer *synth)
 	synth->compressorGain = SynthCompressorGainTable[0];
 	synth->compressorTick = 0;
 	synth->compressorPeak = 0;
+	activeVoiceMask = 0;
 }
 
 void SynthDitherInit(Synthesizer *synth, uint16_t seed)
@@ -141,16 +147,12 @@ static uint8_t compressorLevelFromMix(void)
 	return mag > 255 ? 255 : (uint8_t)mag;
 }
 
-static uint8_t compressorStepFromMs(uint8_t diff, uint16_t timeMs)
-{
-	uint16_t step = ((uint16_t)diff * COMPRESSOR_TICK_MS) / timeMs;
-
-	if (step == 0)
-		step = 1;
-	if (step > diff)
-		step = diff;
-	return (uint8_t)step;
-}
+#define COMPRESSOR_ATTACK_STEP \
+	((uint8_t)(((uint16_t)255 * COMPRESSOR_TICK_MS + COMPRESSOR_ATTACK_MS - 1) \
+		/ COMPRESSOR_ATTACK_MS))
+#define COMPRESSOR_RELEASE_STEP \
+	((uint8_t)(((uint16_t)255 * COMPRESSOR_TICK_MS + COMPRESSOR_RELEASE_MS - 1) \
+		/ COMPRESSOR_RELEASE_MS))
 
 static void SynthCompressorTick(void)
 {
@@ -159,10 +161,14 @@ static void SynthCompressorTick(void)
 	uint8_t step;
 
 	if (level > env) {
-		step = compressorStepFromMs(level - env, COMPRESSOR_ATTACK_MS);
+		step = level - env;
+		if (step > COMPRESSOR_ATTACK_STEP)
+			step = COMPRESSOR_ATTACK_STEP;
 		env += step;
 	} else if (env > level) {
-		step = compressorStepFromMs(env - level, COMPRESSOR_RELEASE_MS);
+		step = env - level;
+		if (step > COMPRESSOR_RELEASE_STEP)
+			step = COMPRESSOR_RELEASE_STEP;
 		env -= step;
 	}
 
@@ -207,6 +213,7 @@ void SynthReleaseAllAsm(void)
 		synthForAsm.SoundUnitUnionList[i].split.envelopeLevel = 0;
 		voiceState[i].envelopeState = ENV_STATE_SILENT;
 	}
+	activeVoiceMask = 0;
 }
 
 static uint8_t alloc_stamp;
@@ -371,6 +378,7 @@ void NoteOnAsm(uint8_t note, uint8_t velocity)
 	voiceState[idx].envelopePhase = 0;
 	voiceState[idx].envelopeFrac = 0;
 	voiceState[idx].allocStamp = alloc_stamp;
+	activeVoiceMask |= (uint8_t)(1U << idx);
 }
 
 void NoteOffAsm(uint8_t note)
@@ -392,18 +400,44 @@ void NoteOffAsm(uint8_t note)
 void GenDecayEnvlopeAsm(void)
 {
 	uint8_t i;
-	for (i = 0; i < POLY_NUM; i++)
+	VoiceState __xdata *voice = voiceState;
+	SoundUnitUnion __data *unit = synthForAsm.SoundUnitUnionList;
+	uint8_t activeMask = activeVoiceMask;
+	uint8_t voiceBit = 1;
+	uint16_t sustainDecayRate;
+	uint8_t sustainFlat;
+
+	if (activeMask == 0)
+		return;
+
+	/* Cache sustain decay once per tick; runtime ADSR_SET can still change it next tick. */
+	sustainDecayRate = AdsrSustainDecayRateFrac;
+	sustainFlat = (sustainDecayRate == 0);
+
+	for (i = 0; i < POLY_NUM; i++, voice++, unit++, voiceBit <<= 1)
 	{
-		uint8_t state = voiceState[i].envelopeState;
-		if (state == ENV_STATE_SILENT)
+		uint8_t state;
+		if (!(activeMask & voiceBit))
 			continue;
 
-		uint8_t env = voiceState[i].envelopePhase;
-		uint8_t vel = voiceState[i].velocity;
+		state = voice->envelopeState;
+
+		if (state == ENV_STATE_SILENT)
+		{
+			activeMask &= (uint8_t)~voiceBit;
+			continue;
+		}
+
+		if (state == ENV_STATE_SUSTAIN && sustainFlat)
+			continue;
+
+		uint8_t env = voice->envelopePhase;
+		uint8_t vel = voice->velocity;
 		uint8_t newState = state;
 		uint8_t newEnv = env;
-		uint8_t newFrac = voiceState[i].envelopeFrac;
+		uint8_t newFrac = voice->envelopeFrac;
 		uint8_t carry;
+		uint8_t envChanged;
 
 		if (state == ENV_STATE_ATTACK)
 		{
@@ -450,9 +484,7 @@ void GenDecayEnvlopeAsm(void)
 		}
 		else if (state == ENV_STATE_SUSTAIN)
 		{
-			if (AdsrSustainDecayRateFrac > 0)
-			{
-			uint16_t frac = (uint16_t)newFrac + AdsrSustainDecayRateFrac;
+			uint16_t frac = (uint16_t)newFrac + sustainDecayRate;
 			carry = (uint8_t)(frac >> 8);
 			newFrac = (uint8_t)frac;
 			if (carry > 0)
@@ -466,7 +498,6 @@ void GenDecayEnvlopeAsm(void)
 				{
 					newEnv = env - carry;
 				}
-			}
 			}
 		}
 		else if (state == ENV_STATE_RELEASE)
@@ -488,20 +519,25 @@ void GenDecayEnvlopeAsm(void)
 			}
 		}
 
-		voiceState[i].envelopeState = newState;
-		voiceState[i].envelopePhase = newEnv;
-		voiceState[i].envelopeFrac = newFrac;
+		envChanged = (newEnv != env);
+
+		voice->envelopeState = newState;
+		voice->envelopePhase = newEnv;
+		voice->envelopeFrac = newFrac;
 
 		if (newState == ENV_STATE_SILENT || newEnv == 0)
 		{
-			synthForAsm.SoundUnitUnionList[i].split.envelopeLevel = 0;
+			unit->split.envelopeLevel = 0;
 			if (newEnv == 0)
-				voiceState[i].envelopeState = ENV_STATE_SILENT;
+				voice->envelopeState = ENV_STATE_SILENT;
+			activeMask &= (uint8_t)~voiceBit;
 		}
-		else
+		else if (envChanged)
 		{
-			uint8_t curve_idx = (uint8_t)(((uint16_t)newEnv * vel) >> 8);
-			synthForAsm.SoundUnitUnionList[i].split.envelopeLevel = AdsrCurveTable[curve_idx];
+			/* Phase unchanged means curve index unchanged, so keep the old envelopeLevel. */
+			uint8_t curve_idx = MulU8High(newEnv, vel);
+			unit->split.envelopeLevel = AdsrCurveTable[curve_idx];
 		}
 	}
+	activeVoiceMask = activeMask;
 }

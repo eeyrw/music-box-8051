@@ -9,8 +9,21 @@
 	.include "SynthCore.inc"
 	.globl _synthForAsm
 	.globl _voiceState
+	.globl _MulU8High
 
 	.area IABS    (ABS,DATA)
 	.org SynthAbsAddr
 _synthForAsm::
 	.ds SynthTotalSize              ; 82 字节
+
+	.area CSEG    (CODE)
+_MulU8High:
+	mov	a,dpl
+	mov	b,a
+	mov	a,sp
+	add	a,#0xfe
+	mov	r0,a
+	mov	a,@r0
+	mul	ab
+	mov	dpl,b
+	ret

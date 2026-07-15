@@ -19,6 +19,7 @@ Commands:
   note-off <NOTE>         Trigger NoteOff (MIDI note 0-127)
   fast-note-on <NOTE> [VEL]  Fast NoteOn, no response (0-127), optional velocity 0-127
   fast-note-off <NOTE>    Fast NoteOff, no response (MIDI note 0-127)
+  panic                   Reset synthesizer state and silence all voices
   play                    Start playback
   stop                    Stop playback
   prev                    Previous song
@@ -57,6 +58,7 @@ CMD_NOTE_ON        = 0x09
 CMD_NOTE_OFF       = 0x0A
 CMD_FAST_NOTE_ON   = 0x0B
 CMD_FAST_NOTE_OFF  = 0x0C
+CMD_PANIC          = 0x0D
 CMD_PLAY           = 0x10
 CMD_STOP           = 0x11
 CMD_PREV           = 0x12
@@ -392,6 +394,10 @@ class MusicBoxClient:
     def fast_note_off(self, note):
         self._send_cmd(CMD_FAST_NOTE_OFF, struct.pack("B", note))
 
+    def panic(self):
+        self._do_cmd(CMD_PANIC)
+        print("Synthesizer reset.")
+
     def adsr_get(self):
         data = self._do_cmd(CMD_ADSR_GET)
         (env_max, tick_ms, attack_rate, decay_rate, sustain_thr,
@@ -496,6 +502,8 @@ def main():
             if not args.args:
                 sys.exit("fast-note-off requires a MIDI note argument (0-127)")
             client.fast_note_off(int(args.args[0]))
+        elif cmd == "panic":
+            client.panic()
         elif cmd == "play":
             client.play()
         elif cmd == "stop":

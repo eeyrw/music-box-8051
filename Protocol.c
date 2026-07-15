@@ -481,6 +481,11 @@ static void dispatch_command(void)
 		break;
 	}
 
+	case CMD_PANIC:
+		SynthPanic();
+		send_response_ok(CMD_PANIC);
+		break;
+
 	case CMD_PLAY:
 		PlayerPlay(&mainPlayer);
 		send_response_ok(CMD_PLAY);

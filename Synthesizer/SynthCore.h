@@ -123,6 +123,7 @@ extern void SynthNoteOn(uint8_t note, uint8_t velocity);
 extern void SynthNoteOff(uint8_t note);
 extern void SynthEnvelopeStep(void);
 extern void SynthReleaseAll(void);
+extern void SynthPanic(void);
 extern void SynthAsm(void);
 
 #ifdef RUN_TEST

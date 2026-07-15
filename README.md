@@ -60,6 +60,7 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 status
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 voice
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-on 60   # trigger note
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 note-off 60  # release note
+python3 tools/musicbox_proto.py --port /dev/ttyUSB0 panic        # reset synth state
 python3 tools/musicbox_proto.py --port /dev/ttyUSB0 next
 
 # Fast note commands (no response, for low-latency playback)

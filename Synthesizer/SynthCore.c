@@ -187,6 +187,20 @@ void SynthReleaseAll(void)
 
 static uint8_t alloc_stamp;
 
+void SynthPanic(void)
+{
+	uint16_t seed = GetRandom() | ((uint16_t)GetRandom() << 8);
+	PlatformIrqState irq_state;
+
+	Platform_IrqSave(irq_state);
+	SynthReleaseAll();
+	SynthInit(&synthForAsm);
+	SynthEnvReset();
+	SynthDitherInit(&synthForAsm, seed);
+	alloc_stamp = 0;
+	Platform_IrqRestore(irq_state);
+}
+
 #ifdef RUN_TEST
 void SynthCoreTestReset(void)
 {

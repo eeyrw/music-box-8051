@@ -494,6 +494,7 @@ Full framed binary protocol documented in `Protocol.h`. Summary:
 | NOTE_OFF | 0x0A | Trigger NoteOff → RELEASE (payload: 1 byte MIDI note) |
 | FAST_NOTE_ON | 0x0B | Fast NoteOn, no response (payload: 1 byte MIDI note, optional vel byte) |
 | FAST_NOTE_OFF | 0x0C | Fast NoteOff, no response (payload: 1 byte MIDI note) |
+| PANIC | 0x0D | Reset synthesizer state and silence all voices |
 | PLAY/STOP/PREV/NEXT | 0x10-13 | Playback control |
 | SET_SONG | 0x14 | Switch to song index |
 | GET_STATUS | 0x15 | Current song, playing state |

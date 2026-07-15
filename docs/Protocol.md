@@ -208,6 +208,14 @@ Voice 0 位于 data[0..12]，Voice 1 位于 data[13..25]，以此类推。
 
 ---
 
+#### CMD_PANIC (0x0D) — 全局复位合成器
+
+- 负载: 无
+- 应答: 状态码
+- 行为: 立即静音所有声道，并重置合成器运行态、包络/压缩器节拍状态、抖动状态和声部分配时间戳。
+
+---
+
 #### CMD_SYS_INFO (0x08) — 综合系统状态
 
 - 负载: 无
@@ -427,6 +435,7 @@ python3 tools/musicbox_proto.py --port /dev/ttyUSB0 <command> [args...]
 | `note-off` | `<NOTE>` | 触发 NoteOff RELEASE (0–127) |
 | `fast-note-on` | `<NOTE> [VEL]` | 快速 NoteOn，无应答 (0–127, 可选力度 0–127) |
 | `fast-note-off` | `<NOTE>` | 快速 NoteOff，无应答 (0–127) |
+| `panic` | — | 全局复位合成器状态并静音所有声道 |
 | `adsr-get` | — | ADSR 包络参数 (8.8 速率 + 范围) |
 | `adsr-set` | `<A_MS> <D_MS> <S_MS> <R_MS>` | 写入运行时 ADSR 时长；S_MS=0 表示 sustain 不衰减 |
 | `play` | — | 开始播放 |

@@ -78,35 +78,57 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 
 ## Architecture
 
+```text
+                         ┌─────────────────────────────────────┐
+                         │ Timer0 ISR @ 32 kHz, register bank 1 │
+                         │                                     │
+                         │  SynthAsm                            │
+                         │  - read synthForAsm voices           │
+                         │  - wavetable + linear interpolation  │
+                         │  - envelopeLevel * sample            │
+                         │  - 8-voice mix + compressor gain     │
+                         │  - clamp, offset, optional dither    │
+                         │                                     │
+                         │  UpdateTick                          │
+                         │  - sysMsPre / sysMs                  │
+                         └──────────────┬──────────────┬───────┘
+                                        │              │
+                                        │              └─ PWMA_CCR2 audio PWM
+                                        │
+                                        │ shared DATA state
+                                        ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Main loop, register bank 0                                                │
+│                                                                          │
+│  SynthProcess()                                                           │
+│  - phase-locked compressor tick from compressorPeak                       │
+│  - phase-locked ADSR step, updates envelopeLevel                          │
+│  - writes visualization PWM from compressorEnv ────────────────┐          │
+│                                                                 │          │
+│  PlayerProcess(&mainPlayer)                                     │          │
+│  - SSPL scheduler and SSCR event decoder                         │          │
+│  - stream reads through Storage backend                          │          │
+│  - dispatches SynthNoteOn / SynthNoteOff / SynthReleaseAll       │          │
+│                                                                 │          │
+│  Proto_Process()                                                 │          │
+│  - UART framed command parser                                    │          │
+│  - playback, note, ADSR, ADC, info commands                      │          │
+│  - SPI flash read/write/erase commands                           │          │
+└─────────────────────────────────────────────────────────────────┼────────┘
+                                                                  │
+                                                                  └─ PWMA_CCR4 visualization PWM
+
+┌──────────────────────────────┐       ┌────────────────────────────────────┐
+│ Storage.c runtime dispatcher  │──────▶│ Internal score backend             │
+│ ScoreStream API               │       │ Storage_Internal.c + scoreList.c   │
+│ selected by JEDEC auto-detect │       └────────────────────────────────────┘
+│ or manual backend override    │       ┌────────────────────────────────────┐
+│                              │──────▶│ SPI score/backend flash operations  │
+└──────────────────────────────┘       │ Storage_SPI.c + SpiFlash.c         │
+                                       └────────────────────────────────────┘
 ```
-                    ┌─────────────────────────┐
-                    │    Timer0 ISR @ 32kHz    │
-                    │     (Bank 1 registers)   │
-                    │                          │
-                    │  ┌────────────────────┐  │
-                    │  │  SynthAsm          │  │
-                    │  │  · Wavetable read  │  │
-                    │  │  · Linear interp.  │  │
-                    │  │  · Envelope ×8     │  │
-                    │  │  · Mix & clip      │──┼──→ PWMA_CCR2 (P1.2/P1.3) Audio
-                    │  │  · Phase advance   │  │
-                    │  └────────────────────┘  │
-                    │  ┌────────────────────┐  │
-                    │  │  UpdateTick        │  │
-                    │  │  · sysMs++         │  │
-                    │  └────────────────────┘  │
-                    └─────────────────────────┘
-                              ↕ mixOut
-                    ┌─────────────────────────┐
-                    │  Main Loop (Bank 0)      │
-                    │  · SynthProcess()        │──→ PWMA_CCR4 (P1.6/P1.7) Visual
-                    │    - ADSR/compressor     │
-                    │  · PlayerProcess()       │
-                    │    - Decode/scheduler    │
-                    │  · Proto_Process()       │
-                    │    - Serial protocol     │
-                    └─────────────────────────┘
-```
+
+The ISR owns the fixed-rate audio sample path. The main loop owns control-rate work: score decoding, ADSR/compressor updates, visualization PWM, serial commands, and storage operations. Short critical sections use `Platform_IrqSave(state)` / `Platform_IrqRestore(state)` when main-loop code reads or clears ISR-shared multi-byte state.
 
 ### Signal chain
 
@@ -119,11 +141,10 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 
 ### Timing
 
-- Timer0 ISR at 32000 Hz, `sysMs` incremented every 32 ticks (1ms)
-- `GetSysMs()` returns 32-bit millisecond uptime, used for all timing
-- Score events: `nextEventMs += delta × 8` (TickPerSecond=125 → 8ms per tick)
-- Envelope tick: every `ADSR_TICK_MS` (5ms), phase-locked via `nextTickMs` accumulator (immune to main-loop jitter)
-- SPI flash operations use `GetSysMs()` for accurate busy-wait timeouts
+- Timer0 ISR runs at 32000 Hz and increments `sysMs` every 32 ticks (1ms).
+- `SynthProcess()` uses `GetSysMs()` for phase-locked compressor and ADSR ticks; missed control ticks are caught up with accumulator loops.
+- `PlayerProcess()` uses `GetSysMs()` for score scheduling: `nextEventMs += delta × 8` (TickPerSecond=125 → 8ms per tick).
+- SPI flash write/erase operations use `GetSysMs()` for busy-wait timeouts.
 
 ### Runtime ADSR tuning
 

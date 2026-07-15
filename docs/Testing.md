@@ -70,10 +70,17 @@ The self-test suite is intentionally focused on current production behavior, not
 - linear interpolation
 - signed sample times unsigned envelope scaling
 - multi-voice 24-bit pre-shift accumulation into raw `mixOut`
+- raw `compressorPeak = max(compressorPeak, abs(mixOut))` capture
 - 16.8 phase advance
 - wavetable loop wrap using `WAVETABLE_LOOP_LEN`
 
-The test compares only fields that `SynthAsm` is responsible for maintaining: raw `mixOut`, `wavetablePos_frac`, and `wavetablePos_int`. It does not compare legacy debug fields such as `val` or `sampleVal`, because the optimized assembly path does not update them.
+The test compares only fields that `SynthAsm` is responsible for maintaining: raw `mixOut`, `compressorPeak`, `wavetablePos_frac`, and `wavetablePos_int`. It does not compare legacy debug fields such as `val` or `sampleVal`, because the optimized assembly path does not update them.
+
+`TestCompressorGainTable()` verifies:
+
+- `SynthCompressorGainTable[0]` matches `SYNTH_COMPRESSOR_FAST_GAIN`.
+- all generated gain values are non-zero.
+- the generated table is monotonic non-increasing to avoid gain jitter.
 
 Instruction-count notes for the optimized Timer0 ISR hot path are documented in `docs/SynthAsmOptimization.md`.
 

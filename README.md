@@ -5,9 +5,9 @@ An 8-voice polyphonic wavetable synthesizer running on an STC8H3K64S2 microcontr
 ## Hardware
 
 - **MCU**: STC8H3K64S2 (64 KB flash, 256 B internal RAM, 3 KB XRAM)
-- **Clock**: 22.1184 MHz (1T mode)
+- **Clock**: 33.1776 MHz as configured in `Bsp.c` (1T mode)
 - **Audio output**: PWM channel 2 on P1.2/P1.3 — 256-period PWM acting as an 8-bit DAC, updated at 32 kHz
-- **Visualization**: PWM channel 4 on P1.6/P1.7 — complementary output, driven by `abs(mixOut) << 1`
+- **Visualization**: PWM channel 4 on P1.6/P1.7 — complementary output, driven by `compressorEnv << 1`
 
 ## Build
 
@@ -115,8 +115,8 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
 2. **Phase accumulator**: 16.8 fixed-point per voice, indexed by MIDI note number through a precomputed `WaveTable_Increment` table
 3. **Linear interpolation**: Between adjacent samples using the 8-bit fractional phase component
 4. **Envelope**: Full ADSR model with 8.8 fixed-point fractional rate per tick. Attack (0→128), Decay (128→110), Sustain (hold or decay from 110→0), Release (linear decay from current env to 0). Raw envelope (0-128) × velocity scale (0-254) → index into 128-entry non-linear response curve → final envelopeLevel (0-255). MIDI velocity is clamped to 0-127; 0 is treated as NoteOff. Tick interval `ADSR_TICK_MS=5ms`, phase-locked to system timer. Default durations are configured via `SynthCore.h` macros (`ADSR_ATTACK_MS=20`, `ADSR_DECAY_MS=200`, `ADSR_SUSTAIN_DECAY_MS=0`, `ADSR_RELEASE_MS=200`) and can be adjusted at runtime with the serial `adsr-set` command until reset.
-5. **Mixing**: 8 voices summed into a 16-bit accumulator, dynamically compressed, finally clamped to [-128, 127], and DC-shifted by +128 for unsigned 8-bit PWM
-6. **Dithering**: Galois 16-bit LFSR adds ±1 LSB triangular dither before PWM output, converting quantization noise to white noise floor. Toggle via `USE_DITHERING` macro in `SynthCore.inc`.
+5. **Mixing**: 8 voices summed in a 24-bit accumulator, shifted once to raw 16-bit `mixOut`, dynamically compressed, clamped to [-128, 127], and DC-shifted by +128 for unsigned 8-bit PWM
+6. **Optional dithering**: `USE_DITHERING` is currently `0`, so the LFSR field is present but the ISR dither path is compiled out. Setting the macro enables ±1 LSB output dither before the PWM write.
 
 ### Timing
 
@@ -182,7 +182,7 @@ Player does not know which backend is active — all `stream_*` calls go through
 
 ## Verification Suite
 
-The core synthesizer has a `RUN_TEST` firmware self-test suite plus host-side serial tests. The self-tests validate the current production behavior: `UpdateTick`, voice allocation, NoteOff release, ADSR transitions, and the `SynthAsm` hot path against an independent C reference.
+The core synthesizer has a `RUN_TEST` firmware self-test suite plus host-side serial tests. The self-tests validate the current production behavior: `UpdateTick`, voice allocation, NoteOff release, ADSR transitions, compressor gain table generation, and the `SynthAsm` hot path against an independent C reference.
 
 ```bash
 make clean DEFS="RUN_TEST STC8"
@@ -221,7 +221,7 @@ Full test details are documented in `docs/Testing.md`. Host-side ADSR/protocol t
 │   └── PlayerUtil.s                 Legacy stubs (not compiled)
 │
 ├── Synthesizer/                     Audio synthesis engine
-│   ├── Synth.inc                    SynthAsm — 8-voice synthesis core (ISR hot path, inc. dithering)
+│   ├── Synth.inc                    SynthAsm — 8-voice synthesis core (ISR hot path, optional dithering)
 │   ├── SynthCore.inc                Struct offsets + memory layout constants
 │   ├── SynthCoreAsm.s               _synthForAsm data segment (0x21)
 │   ├── SynthCore.c                  Synthesizer init + NoteOn/Off/Decay/ReleaseAll (C ADSR)
@@ -232,7 +232,6 @@ Full test details are documented in `docs/Testing.md`. Host-side ADSR/protocol t
 │   ├── PeriodTimer.h                sysMs extern declarations
 │   ├── WaveTable.{c,h}              Wavetable data + pitch increments
 │   ├── WaveTable.inc                Wavetable dimensions + constants (ASM)
-│   ├── EnvelopTable.{c,h}           256-entry non-linear velocity response curve
 │   ├── AlgorithmTest.c              RUN_TEST firmware self-tests
 │   ├── Synth_testbench.s            RUN_TEST wrapper for Synth.inc
 │   ├── UpdateTick_testbench.s       RUN_TEST wrapper for UpdateTick.inc

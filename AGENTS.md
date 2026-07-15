@@ -11,7 +11,7 @@ make clean DEFS="RUN_TEST STC8" && make DEFS="RUN_TEST STC8"  # firmware self-te
 
 SDCC toolchain for 8051 (C: `sdcc`, asm: `sdas8051`, hex packer: `packihx`). Outputs `.ihx` → `.hex` (via packihx) and `.bin` (via `sdobjcopy -O binary`).
 
-`F_CPU` defaults to 16000000 in Makefile but `Bsp.c` overrides it to **22118400UL** — do not trust the Makefile value. Timer0 reload is always computed from 22118400.
+`F_CPU` defaults to 16000000 in Makefile but `Bsp.c` uses **33177600UL** (`MAIN_Fosc`) for UART and Timer0 reload calculations — do not trust the Makefile value for hardware timing.
 
 Memory model is **large** (xdata used). Stack-auto is enabled (`--stack-auto`), required for ISR reentrancy safety.
 
@@ -19,7 +19,7 @@ Memory model is **large** (xdata used). Stack-auto is enabled (`--stack-auto`), 
 
 ### MCU: STC8H3K64S2-45I-TSSOP20
 
-64KB Flash, 256B IRAM + 3KB XRAM, 22.1184 MHz internal oscillator.
+64KB Flash, 256B IRAM + 3KB XRAM. Current firmware timing constants assume a 33.1776 MHz system clock.
 
 `EAXFR` (P_SW2.7) 用于访问 XFR 扩展 SFR (0xFA00~0xFFFF)，不影响 XRAM 低 0x0000~0x0BFF 区域。
 
@@ -47,8 +47,8 @@ Memory model is **large** (xdata used). Stack-auto is enabled (`--stack-auto`), 
   0x00–0x07      8B      Register Bank 0–3 (PSW 选择)
   0x08–0x1F      —       Register Bank 1 (ISR 专用)
    0x20–0x2F      16B     位寻址区
-   0x21–0x6D       77B    Synthesizer 结构体 (8×9 + 2 + 1 + 2B LFSR)
-   0x6E–0xFF      146B    C 栈
+   0x21–0x72       82B    Synthesizer 结构体 (8×9 + mix/lfsr/compressor state)
+   0x73–0xFF      141B    C 栈
 ```
 
 #### IRC 时钟注意事项
@@ -56,7 +56,7 @@ Memory model is **large** (xdata used). Stack-auto is enabled (`--stack-auto`), 
 - 复位后固定 24MHz；用户代码运行时使用上次烧录时设定的频率
 - **32~37MHz 可能为盲区**，强烈建议 ≤30MHz 或 ≥40MHz
 - B 版芯片低温温漂较高温大，低频段温漂比高频段大
-- 当前项目使用 22.1184MHz (安全)
+- 当前 `Bsp.c` 使用 33.1776MHz；修改 IRC 设置或烧录频率时必须同步 `MAIN_Fosc`，否则 Timer0/baud 都会漂移
 
 ### SPI 引脚组 (P_SW1 切换)
 
@@ -188,7 +188,7 @@ stream_read / stream_u8 / stream_u16 / stream_u32     // 数据读取
 ### PWM Output Pins
 
 - **PWMA_CCR2** (P1.2/P1.3): audio PWM DAC, 256-count period, 8-bit resolution
-- **PWMA_CCR4** (P1.6/P1.7): visualization (mirror galvo/LED), complementary output mode, driven by `abs(mixOut) << 1`
+- **PWMA_CCR4** (P1.6/P1.7): visualization (mirror galvo/LED), complementary output mode, driven by `compressorEnv << 1`
 
 ### UART / USB
 
@@ -262,7 +262,8 @@ Current firmware self-test coverage:
 - `TestNoteOnAllocation()` — verifies voice initialization, free-voice-first allocation, and default oldest-voice stealing
 - `TestNoteOffRelease()` — verifies same-note retrigger release, short-note precharge, and velocity-0 NoteOn as NoteOff
 - `TestAdsrStateMachine()` — verifies deterministic ADSR transitions and velocity-to-curve mapping
-- `TestSynthAsmStep()` — compares the `Synth.inc` assembly hot path against an independent C reference for interpolation, signed multiply, accumulation, phase advance, and wavetable wrap
+- `TestCompressorGainTable()` — verifies generated compressor table fast gain, non-zero entries, and monotonicity
+- `TestSynthAsmStep()` — compares the `Synth.inc` assembly hot path against an independent C reference for interpolation, signed multiply, 24-bit accumulation, compressor peak capture, phase advance, and wavetable wrap
 
 The Makefile automatically switches assembly sources for test builds: `Synth_testbench.s` and `UpdateTick_testbench.s` are compiled under `RUN_TEST`, while the real `PeriodTimer.s` ISR is compiled for production builds. Do not run production and `RUN_TEST` builds concurrently in one worktree because they share intermediate object paths.
 
@@ -280,7 +281,7 @@ Main loop:
 ```c
 while (1) {
     PlayerProcess(&mainPlayer);   // SSCR 解码 + 调度器
-    VisualizeSound();             // Abs(mixOut) << 1 → PWM
+    VisualizeSound();             // compressorEnv << 1 → PWMA_CCR4
     Proto_Process();              // 串口协议处理
 }
 ```
@@ -295,7 +296,7 @@ while (1) {
 
 ### Fixed memory layout (critical — do not change blindly)
 
-- **Player struct**: SDCC auto-allocated in XRAM (~39 bytes). `SSCR_Player` (19B) + `PlayScheduler` (24B).
+- **Player struct**: SDCC auto-allocated in XRAM; layout is defined in `Player.h` (`SSCR_Player` + `PlayScheduler`, roughly a few dozen bytes).
 - **Synthesizer struct**: absolute DATA `0x21`, 82 bytes (`SynthCore.inc`, data segment declared in `SynthCoreAsm.s` via `.org`; ADSR/compressor control logic in `SynthCore.c`)
 - **sysMsPre + sysMs**: DSEG allocated by `UpdateTick.inc` (5 bytes DATA at compiler-assigned address, 0x10-0x1A)
 - **SPI 缓存**: 1024 字节 XRAM (`SpiFlash.c`)
@@ -310,11 +311,11 @@ while (1) {
 Per-voice per-tick:
 1. Read `WaveTable[pos]` + `WaveTable[pos+1]`, linear-interpolate with fractional phase
 2. Multiply interpolated sample (signed) × envelope level (0-255 unsigned), divide by 256
-3. Accumulate into 16-bit `mixOut`
+3. Accumulate full products into a 24-bit accumulator, then shift once to produce 16-bit `mixOut`
 4. Phase advance: `pos_frac += inc_frac; pos_int += inc_int + carry`
 5. Loop point: when `pos_int >= WAVETABLE_LEN`, subtract `WAVETABLE_LOOP_LEN`
 
-After all voices: raw `mixOut` is dynamically compressed with the gain prepared by `SynthCompressorTick()`, clamped to [-128,127], DC-shifted (+128), optionally dithered (±1 LSB), and written to `PWMA_CCR2` (PWM DAC output).
+After all voices: raw `mixOut` is written for diagnostics/visualization state, the raw peak updates `compressorPeak`, then `mixOut` is dynamically compressed with the gain prepared by `SynthCompressorTick()`, clamped to [-128,127], DC-shifted (+128), optionally dithered when `USE_DITHERING` is enabled, and written to `PWMA_CCR2` (PWM DAC output).
 
 ### Envelope / NoteOff (ADSR model, 2026-07)
 
@@ -373,9 +374,9 @@ Five strategies selectable via `#define NOTEON_STEAL_STRATEGY` in `SynthCore.h:4
 
 `stealVoice()` 在 `SynthCore.c` 中用五个 `#if`/`#endif` 块实现。默认为 `VOICE_STEAL_OLDEST`。
 
-### Dithering (2026-07)
+### Optional Dithering (2026-07)
 
-8-bit PWM DAC 输出的量化台阶感通过 ±1 LSB 三角抖动转换为白噪声底层。
+`USE_DITHERING` 当前为 0，默认构建不执行 ISR 抖动路径。启用后，8-bit PWM DAC 输出的量化台阶感通过 ±1 LSB 抖动转换为白噪声底层。
 
 | 参数 | 值 |
 |------|-----|
@@ -384,8 +385,8 @@ Five strategies selectable via `#define NOTEON_STEAL_STRATEGY` in `SynthCore.h:4
 | LFSR 状态 | `synthForAsm.lfsr` (DATA 0x6C-0x6D) |
 | 种子 | `GetRandom()` (ADC 噪声) 在上电初始化时设置 |
 | 应用 | ISR 内 DC 偏移后、PWM 写入前，±1 LSB 随机抖动 (带饱和) |
-| ISR 开销 | ~21 cycles 平均，占 ISR 预算的 3% |
-| 开关 | `USE_DITHERING` 宏 (`SynthCore.inc:31`)，设 0 可关闭 |
+| ISR 开销 | 启用时约 ~21 cycles 平均；当前默认 0 cycles |
+| 开关 | `USE_DITHERING` 宏 (`SynthCore.h` / `SynthCore.inc`)，当前为 0 |
 
 关闭后 LFSR 字段仍在结构体中但不消耗 ISR 周期。
 
@@ -470,7 +471,7 @@ State machine: `READY_TO_SWITCH` → `SWITCHING` → `SCORE_PREV/NEXT` → `READ
 
 `NoteOnAsm()` writes the selected voice's 8-bit `envelopeLevel = 0` before updating multi-byte `increment` and `wavetablePos` fields. The ISR checks `envelopeLevel` first and skips zero-envelope voices, so it cannot use a half-updated voice; no broad `EA=0` critical section is needed for NoteOn voice writes. The free-voice scan uses `envelopeState == SILENT` and runs outside a critical section since `envelopeState` is only set to SILENT in main-loop context (`GenDecayEnvlopeAsm` / `SynthReleaseAllAsm`), not in ISR.
 
-**Why not "steal the quietest"?** High notes have larger `phase increment`, so `wavetablePos` reaches `WAVETABLE_ATTACK_LEN` (21260) faster, causing their envelope decay to start earlier. Comparing `envelopeLevel` systematically discriminates against high notes. Timestamp FIFO is pitch-independent and guarantees the oldest-playing note is stolen.
+**Why not "steal the quietest"?** Comparing `envelopeLevel` can systematically favor or penalize notes based on envelope timing rather than musical age. Timestamp FIFO is pitch-independent and guarantees the oldest-playing note is stolen.
 
 **Why not `envelopeLevel == 0` for free scan?** `NoteOnAsm` sets `envelopeLevel=0` for ATTACK start. If a second NoteOn in the same processing cycle (delta=0 between events) scans with `envelopeLevel == 0`, it would steal the freshly-allocated voice. Using `envelopeState == SILENT` prevents this — an ATTACK voice has `state=ATTACK` even though `level=0`.
 
@@ -516,7 +517,7 @@ Python CLI: `tools/musicbox_proto.py --port /dev/ttyUSB0 <command> [args...]`
 
 **1. SYNC-byte-in-payload corruption (host side)**
 
-`_recv_frame` 旧版在读到任意 `0x5A` 时重置缓冲区。若 payload 中恰好含 `0x5A`（如 VOICE_DUMP 80 字节合成器状态数据），会截断有效帧，拼接残帧导致 `invalid response frame`。
+`_recv_frame` 旧版在读到任意 `0x5A` 时重置缓冲区。若 payload 中恰好含 `0x5A`（如 VOICE_DUMP 104 字节合成器状态数据），会截断有效帧，拼接残帧导致 `invalid response frame`。
 
 修复：改为三阶段严格按 dlen 读帧——找 SYNC → 读 4 字节头部获取 dlen → 读满 `5+dlen` 字节返回，中途绝不重同步 `0x5A`。另加 `reset_input_buffer()` 清除串口残留。
 
@@ -539,13 +540,14 @@ SPI flash driver (`SpiFlash.c`) uses `GetSysMs()` for accurate busy-wait timeout
 
 Player (`Player.c`) uses `GetSysMs()` for:
 - Score event scheduling: `nextEventMs += delta * 8` (125 ticks/sec → 8ms/tick)
-- Envelope decay: every 3ms
+- Compressor tick: every `COMPRESSOR_TICK_MS` (1ms)
+- ADSR envelope tick: every `ADSR_TICK_MS` (5ms)
 
 ## Assembly dependency tracking
 
-SDCC's assembler cannot auto-generate dependency files. Changes to `.inc` files will **not** trigger rebuilds unless the Makefile manual deps (lines 114-117) are updated to cover the changed `.inc` file. Always `make clean` after editing `.inc` files.
+SDCC's assembler cannot auto-generate dependency files. Changes to `.inc` files will **not** trigger rebuilds unless the Makefile manual deps around `Synthesizer/*.rel` are updated to cover the changed `.inc` file. Always `make clean` after editing `.inc` files.
 
-Note: the Makefile's `.d` generation (`Makefile:126`) uses `sed 's|^[^:]*:|$@:|'` to fix SDCC's `-MM` output which otherwise produces a truncated target name (source file instead of object file). `LIBDIR` is expanded through `patsubst`, so an empty `LIBDIR` does not emit a bare `-I` that would swallow the first `-D` define.
+Note: the Makefile's `.d` generation uses `sed 's|^[^:]*:|$@:|'` to fix SDCC's `-MM` output which otherwise produces a truncated target name (source file instead of object file). `LIBDIR` is expanded through `patsubst`, so an empty `LIBDIR` does not emit a bare `-I` that would swallow the first `-D` define.
 
 ## Files with duplicates / overlaps
 
@@ -565,14 +567,13 @@ Source code is organized into three modules:
 │   ├── SynthCore.{h,c}     Synthesizer/SoundUnit struct definitions + C init + NoteOn/Off/Decay/ReleaseAll
 │   ├── SynthCoreAsm.s      _synthForAsm data segment (0x21) + _SynthReleaseAllAsm (legacy)
 │   ├── SynthCore.inc       Struct offsets, POLY_NUM, unitSz, constants
-│   ├── Synth.inc           _SynthAsm — 8-voice ISR hot path (含抖动)
+│   ├── Synth.inc           _SynthAsm — 8-voice ISR hot path (optional dithering)
 │   ├── PeriodTimer.s       Timer0 ISR entry (bank 1, includes Synth+UpdateTick)
 │   ├── UpdateTick.inc      32-bit sysMs counter (ISR)
 │   ├── AlgorithmTest.c     RUN_TEST firmware self-tests
 │   ├── Synth_testbench.s   RUN_TEST callable wrapper for Synth.inc
 │   ├── UpdateTick_testbench.s RUN_TEST callable wrapper for UpdateTick.inc + ISR stub
-│   ├── WaveTable.{c,h,inc} Celesta C5 wavetable + pitch increment table
-│   └── EnvelopTable.{c,h}  256-entry decay envelope
+│   └── WaveTable.{c,h,inc} Square Wave C5 wavetable + pitch increment table
 └── tools/                   Python CLI + boot tools
 ```
 
@@ -582,11 +583,9 @@ Include paths: `-IPlayer -ISynthesizer` (C and ASM). Both directories are always
 
 ### Synth.inc (hot path, runs 8 voices × 32 kHz)
 
-- **B register pressure**: `mov b,r4` (line 48) loads envelope before the signed-mul branch. If interpolation is disabled (`.ifne USE_LINEAR_INTEROP`), `r4` is unused between lines 13-48.
+- **B register pressure**: `mov b,r4` loads envelope before the signed-mul branch. If interpolation is disabled (`.ifne USE_LINEAR_INTEROP`), `r4` has fewer live ranges before the envelope multiply.
 - **Signed multiply branching**: For each voice, two separate signed-mul code paths (interpolation multiply + envelope multiply) generate unique labels per `.irp` iteration. The `jb a.7` / `cpl / inc / mul / cpl / addc` pattern is correct but verbose. Could unify with a subroutine if code size matters more than cycles.
 - **Compressor gain apply**: post-mix raw `mixOut` is multiplied by the main-loop-prepared 8-bit Q8 compressor gain before final clipping. The positive/negative paths are currently expanded inline; a shared subroutine would save code size but add ISR stack traffic.
-- **Clipping**: the 16-bit signed `if (x > 127) x=127; else if (x < -128) x=-128` uses signed 16-bit compare with XOR-0x80 sign-flip trick. Two conditional branches. Could be replaced with saturation arithmetic using carry flags.
-- **DC offset removal**: `a - (-128)` = `a + 128`. A direct `add a,#128` with carry propagation is 1-2 cycles faster than `subb a,#-128`.
 - **Phase increment**: reads `pIncrement_frac/int` fresh from DATA each iteration even when increment is unchanged. Loading once per voice is already minimal since registers are scarce.
 
 ### Note: NoteOnAsm / NoteOffAsm / GenDecayEnvlopeAsm / SynthReleaseAllAsm

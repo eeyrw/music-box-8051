@@ -139,19 +139,20 @@ SYNTH_COMPRESSOR_ENV_SHIFT = 2
 gain_table_index = abs(raw_mixOut) / 4
 ```
 
-The envelope update is asymmetric:
+The envelope update is asymmetric and uses fixed per-tick step caps derived from the configured attack/release times:
 
 ```c
-if (level > env) {
-    env += step_from_ms(level - env, COMPRESSOR_ATTACK_MS);
-} else if (env > level) {
-    env -= step_from_ms(env - level, COMPRESSOR_RELEASE_MS);
-}
+attack_step  = ceil(255 * COMPRESSOR_TICK_MS / COMPRESSOR_ATTACK_MS)
+release_step = ceil(255 * COMPRESSOR_TICK_MS / COMPRESSOR_RELEASE_MS)
 
-step_from_ms(diff, time_ms) = clamp(diff * COMPRESSOR_TICK_MS / time_ms, 1, diff)
+if (level > env) {
+    env += min(level - env, attack_step);
+} else if (env > level) {
+    env -= min(env - level, release_step);
+}
 ```
 
-At the default 1 ms update rate, this keeps the old behavior: attack advances by about `diff / 4`, and release by about `diff / 32`. The minimum step of 1 guarantees convergence even when the remaining difference is smaller than the configured time constant.
+At the default 1 ms update rate this gives `attack_step=64` and `release_step=8`, so a full-scale upward change settles in about 4 ticks and a full-scale downward change in about 32 ticks.
 
 ## Gain Table
 
@@ -254,7 +255,7 @@ pCompressorPeak = unitSz*POLY_NUM+8  ; 80-81
 SynthTotalSize  = unitSz*POLY_NUM+10 ; 82
 ```
 
-This makes the ownership explicit. These bytes are not shared with dithering or visualization state.
+This makes the ownership explicit. `compressorEnv` is also read by `VisualizeSound()` for PWMA_CCR4 output, while dithering uses the separate `lfsr` field.
 
 ## Generated Files
 
@@ -292,7 +293,7 @@ make clean && make
 Current self-tests verify:
 
 - generated gain table monotonicity
-- the existing `SynthAsm` mixer behavior
+- raw compressor peak capture in the `SynthAsm` mixer path
 
 ## Known Tradeoffs
 

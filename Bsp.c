@@ -272,8 +272,9 @@ extern MEM_FAST_DATA(uint32_t) sysMs;
 uint32_t GetSysMs(void)
 {
 	uint32_t val;
-	PlatformIrqState irq_state = Platform_IrqSave();
+	PlatformIrqState irq_state;
 
+	Platform_IrqSave(irq_state);
 	val = sysMs;
 	Platform_IrqRestore(irq_state);
 	return val;

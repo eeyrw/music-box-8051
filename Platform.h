@@ -10,8 +10,8 @@ typedef __bit PlatformIrqState;
 #define MEM_CODE(type)      type __code
 #define MEM_FAST_DATA(type) type __data
 
-#define Platform_IrqSave() \
-	(EA ? (EA = 0, 1) : 0)
+#define Platform_IrqSave(state) \
+	do { (state) = EA; EA = 0; } while (0)
 
 #define Platform_IrqRestore(state) \
 	do { EA = (state); } while (0)

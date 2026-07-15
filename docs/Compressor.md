@@ -121,7 +121,7 @@ compressorPeak = max(compressorPeak, abs(raw_mixOut))
 `SynthCompressorTick()` atomically reads and clears this peak once per compressor tick, then scales it down to a gain-table index with the generated `SYNTH_COMPRESSOR_ENV_SHIFT`:
 
 ```c
-irq_state = Platform_IrqSave();
+Platform_IrqSave(irq_state);
 mag = synthForAsm.compressorPeak;
 synthForAsm.compressorPeak = 0;
 Platform_IrqRestore(irq_state);

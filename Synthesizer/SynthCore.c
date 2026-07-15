@@ -92,8 +92,9 @@ static uint32_t nextCompressorTickMs;
 static uint8_t compressorLevelFromMix(void)
 {
 	uint16_t mag;
-	PlatformIrqState irq_state = Platform_IrqSave();
+	PlatformIrqState irq_state;
 
+	Platform_IrqSave(irq_state);
 	mag = synthForAsm.compressorPeak;
 	synthForAsm.compressorPeak = 0;
 	Platform_IrqRestore(irq_state);
@@ -168,7 +169,7 @@ void SynthEnvReset(void)
 	nextCompressorTickMs = nextTickMs;
 	synthForAsm.compressorEnv = 0;
 	synthForAsm.compressorGain = SynthCompressorGainTable[0];
-	irq_state = Platform_IrqSave();
+	Platform_IrqSave(irq_state);
 	synthForAsm.compressorPeak = 0;
 	Platform_IrqRestore(irq_state);
 }

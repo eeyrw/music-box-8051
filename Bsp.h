@@ -1,7 +1,7 @@
 #ifndef __BSP_H__
 #define __BSP_H__
 
-#include "RegisterDefine.h"
+#include "Platform.h"
 
 #define ADC_RES_12BIT	1		//0: MCU为10位ADC; 1: MCU为12位ADC
 

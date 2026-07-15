@@ -1,13 +1,14 @@
 #include "Storage.h"
+#include "Platform.h"
 
 typedef struct
 {
-	__code uint8_t *data;
+	MEM_CODE(uint8_t) *data;
 	uint32_t pos;
 	uint32_t size;
 } StreamImpl;
 
-__code extern unsigned char Score[];
+extern MEM_CODE(unsigned char) Score[];
 
 void storage_init_internal(void)
 {
@@ -21,7 +22,7 @@ uint32_t storage_get_base_addr_internal(void)
 void stream_init_internal(ScoreStream *s, uint32_t base, uint32_t size)
 {
 	StreamImpl *si = (StreamImpl *)s;
-	si->data = (__code uint8_t *)(uint16_t)base;
+	si->data = (MEM_CODE(uint8_t) *)(uint16_t)base;
 	si->pos  = 0;
 	si->size = size;
 }

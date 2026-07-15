@@ -113,21 +113,21 @@ typedef struct _Player
 
 // ======================== 公有函数 ========================
 
-/* Player lives in XRAM; keep the API xdata-specific to avoid generic pointer helpers. */
-extern void PlayerInit(Player __xdata *player, Synthesizer *synthesizer);
-extern void PlayerProcess(Player __xdata *player);
+/* Player lives in external RAM on 8051 targets; keep the API memory-class-specific. */
+extern void PlayerInit(MEM_XDATA(Player) *player, Synthesizer *synthesizer);
+extern void PlayerProcess(MEM_XDATA(Player) *player);
 
-extern void StartPlayScheduler(Player __xdata *player, uint8_t mode);
-extern void StopPlayScheduler(Player __xdata *player);
-extern void SchedulerPlaySong(Player __xdata *player, int32_t index);
+extern void StartPlayScheduler(MEM_XDATA(Player) *player, uint8_t mode);
+extern void StopPlayScheduler(MEM_XDATA(Player) *player);
+extern void SchedulerPlaySong(MEM_XDATA(Player) *player, int32_t index);
 
-extern void PlaySchedulerNextScore(Player __xdata *player);
-extern void PlaySchedulerPreviousScore(Player __xdata *player);
+extern void PlaySchedulerNextScore(MEM_XDATA(Player) *player);
+extern void PlaySchedulerPreviousScore(MEM_XDATA(Player) *player);
 
-extern void PlayScore(Player __xdata *player, ScoreStream *sspl, uint32_t offset);
-extern void StopDecode(Player __xdata *player);
+extern void PlayScore(MEM_XDATA(Player) *player, ScoreStream *sspl, uint32_t offset);
+extern void StopDecode(MEM_XDATA(Player) *player);
 
-extern void PlayerPlay(Player __xdata *player);
-extern void PlayerStop(Player __xdata *player);
+extern void PlayerPlay(MEM_XDATA(Player) *player);
+extern void PlayerStop(MEM_XDATA(Player) *player);
 
 #endif

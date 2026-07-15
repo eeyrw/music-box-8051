@@ -16,11 +16,10 @@ Timer0 ISR, 32 kHz:
   write PWMA_CCR2
 
 Main-loop timing path:
-  PlayerProcess()
-    -> SSCR_DecodeProcess()
-      -> SynthEnvelopeTick()
-        -> SynthCompressorTick() every 1 ms
-        -> GenDecayEnvlopeAsm() every ADSR_TICK_MS
+  SynthProcess()
+    -> SynthCompressorTick() every 1 ms
+    -> SynthEnvelopeStep() every ADSR_TICK_MS
+    -> update PWMA_CCR4 visualization from compressorEnv
 ```
 
 The ISR accumulates a raw peak hold in `synthForAsm.compressorPeak` and applies `synthForAsm.compressorGain`. Envelope detection and gain lookup are done outside the ISR by `SynthCompressorTick()` in `SynthCore.c`. A final limiter remains in the ISR after compression so that transient peaks cannot wrap around the 8-bit PWM range.
@@ -122,11 +121,10 @@ compressorPeak = max(compressorPeak, abs(raw_mixOut))
 `SynthCompressorTick()` atomically reads and clears this peak once per compressor tick, then scales it down to a gain-table index with the generated `SYNTH_COMPRESSOR_ENV_SHIFT`:
 
 ```c
-savedEA = EA;
-EA = 0;
+irq_state = Platform_IrqSave();
 mag = synthForAsm.compressorPeak;
 synthForAsm.compressorPeak = 0;
-EA = savedEA;
+Platform_IrqRestore(irq_state);
 level = mag >> SYNTH_COMPRESSOR_ENV_SHIFT;
 ```
 
@@ -255,7 +253,7 @@ pCompressorPeak = unitSz*POLY_NUM+8  ; 80-81
 SynthTotalSize  = unitSz*POLY_NUM+10 ; 82
 ```
 
-This makes the ownership explicit. `compressorEnv` is also read by `VisualizeSound()` for PWMA_CCR4 output, while dithering uses the separate `lfsr` field.
+This makes the ownership explicit. `compressorEnv` is also used by `SynthProcess()` for PWMA_CCR4 visualization output, while dithering uses the separate `lfsr` field.
 
 ## Generated Files
 

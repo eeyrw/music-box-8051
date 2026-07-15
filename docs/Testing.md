@@ -47,22 +47,22 @@ The self-test suite is intentionally focused on current production behavior, not
 
 `TestNoteOnAllocation()` verifies:
 
-- `NoteOnAsm(note, velocity)` initializes note, velocity scale, state, phase, level, and pitch increment.
+- `SynthNoteOn(note, velocity)` initializes note, velocity scale, state, phase, level, and pitch increment.
 - Newly allocated ATTACK voices are not reused just because `envelopeLevel == 0`.
 - All 8 voices fill before stealing.
 - The default `VOICE_STEAL_OLDEST` strategy steals voice 0 for the 9th note after a clean reset.
 
 `TestNoteOffRelease()` verifies:
 
-- `NoteOffAsm(note)` releases every active matching voice, including same-note retriggers.
+- `SynthNoteOff(note)` releases every active matching voice, including same-note retriggers.
 - A note released before its first envelope tick is precharged to `ADSR_ENV_MAX / 2`.
-- `NoteOnAsm(note, 0)` is treated as NoteOff.
+- `SynthNoteOn(note, 0)` is treated as NoteOff.
 
 `TestAdsrStateMachine()` verifies:
 
 - ADSR state transitions: `ATTACK -> DECAY -> SUSTAIN -> RELEASE -> SILENT`.
 - Runtime rates set by `AdsrSetRates()` drive deterministic 8.8 fixed-point phase movement.
-- `envelopeLevel` follows `AdsrCurveTable[(env * velocity_scaled) >> 8]`.
+- `envelopeLevel` follows `NonlinearMapTable[(env * velocity_scaled) >> 8]`.
 
 `TestSynthAsmStep()` verifies the assembly hot path in `Synth.inc` against a small independent C reference:
 

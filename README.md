@@ -99,11 +99,10 @@ See `docs/Protocol.md` for the full protocol specification, or `Protocol.h` for 
                               ↕ mixOut
                     ┌─────────────────────────┐
                     │  Main Loop (Bank 0)      │
-                    │  · SSCR_DecodeProcess()  │
-                    │    - Score sequencing    │
-                    │  · PlaySchedulerProcess  │──→ PWMA_CCR4 (P1.6/P1.7) Visual
-                    │    - Auto-advance/stop   │
-                    │  · VisualizeSound()      │
+                    │  · SynthProcess()        │──→ PWMA_CCR4 (P1.6/P1.7) Visual
+                    │    - ADSR/compressor     │
+                    │  · PlayerProcess()       │
+                    │    - Decode/scheduler    │
                     │  · Proto_Process()       │
                     │    - Serial protocol     │
                     └─────────────────────────┘
@@ -134,7 +133,7 @@ For interactive tuning, run `python3 tools/adsr_web.py` and open the Web Serial 
 
 ### Voice allocation
 
-**Free-voice-first + configurable steal strategy** across 8 voices. NoteOn scans for `voiceState[].envelopeState == SILENT` (XRAM), reuses immediately. If all 8 busy, `stealVoice()` applies the strategy selected by `NOTEON_STEAL_STRATEGY` (default: steal oldest `allocStamp`). Five strategies available: oldest, quietest, newest, highest note, lowest note. `NoteOnAsm()` first clears the selected voice's 8-bit `envelopeLevel`, so the ISR skips that voice while the main loop rewrites multi-byte pitch/phase fields; no broad `EA=0` critical section is needed for the voice update. NoteOff sets `envelopeState = RELEASE` for all matching voices; if `envelopePhase == 0` (before first envelope tick), pre-charges to `ADSR_ENV_MAX/2` to prevent silent staccato notes. Stop/EndOfScore calls `SynthReleaseAllAsm` which zeroes all envelopes and sets state=SILENT.
+**Free-voice-first + configurable steal strategy** across 8 voices. NoteOn scans for `voiceState[].envelopeState == SILENT` (XRAM), reuses immediately. If all 8 busy, `stealVoice()` applies the strategy selected by `NOTEON_STEAL_STRATEGY` (default: steal oldest `allocStamp`). Five strategies available: oldest, quietest, newest, highest note, lowest note. `SynthNoteOn()` first clears the selected voice's 8-bit `envelopeLevel`, so the ISR skips that voice while the main loop rewrites multi-byte pitch/phase fields; no broad interrupt-off critical section is needed for the voice update. NoteOff sets `envelopeState = RELEASE` for all matching voices; if `envelopePhase == 0` (before first envelope tick), pre-charges to `ADSR_ENV_MAX/2` to prevent silent staccato notes. Stop/EndOfScore calls `SynthReleaseAll()` which zeroes all envelopes and sets state=SILENT.
 
 ### Score format — SSPL + SSCR
 
@@ -203,6 +202,7 @@ Full test details are documented in `docs/Testing.md`. Host-side ADSR/protocol t
 ```
 ├── main.c                           Entry point, main loop
 ├── Bsp.c / Bsp.h                    Hardware init (clock, UART, Timer0, PWM, ADC)
+├── Platform.h                       Compiler/platform memory and IRQ abstraction
 ├── UartRedirect.c                   putchar/getchar over UART1
 ├── Protocol.c / Protocol.h          Serial protocol (frame, commands, flash ops)
 ├── RegisterDefine.h                 MCU selector (STC8 vs STC15F)
@@ -224,8 +224,9 @@ Full test details are documented in `docs/Testing.md`. Host-side ADSR/protocol t
 │   ├── Synth.inc                    SynthAsm — 8-voice synthesis core (ISR hot path, optional dithering)
 │   ├── SynthCore.inc                Struct offsets + memory layout constants
 │   ├── SynthCoreAsm.s               _synthForAsm data segment (0x21)
-│   ├── SynthCore.c                  Synthesizer init + NoteOn/Off/Decay/ReleaseAll (C ADSR)
+│   ├── SynthCore.c                  Synthesizer init + process + note/envelope control (C ADSR)
 │   ├── SynthCore.h                  SoundUnit/Synthesizer/VoiceState struct definitions
+│   ├── NonlinearMapTable.{c,h}      128-entry linear-to-nonlinear response table
 │   ├── CompressorGenerated.{c,h}    Generated compressor gain table/constants
 │   ├── UpdateTick.inc               sysMs millisecond counter (ISR)
 │   ├── PeriodTimer.s                Timer0 ISR entry (bank switch)

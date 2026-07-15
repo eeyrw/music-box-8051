@@ -57,6 +57,7 @@ LIBDIR   =
 
 SRC 	+= main.c
 SRC 	+= Synthesizer/SynthCore.c
+SRC 	+= Synthesizer/NonlinearMapTable.c
 SRC 	+= Player/Player.c
 SRC 	+= UartRedirect.c
 SRC 	+= Bsp.c

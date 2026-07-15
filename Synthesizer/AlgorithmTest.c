@@ -12,7 +12,7 @@ extern void UpdateTick(void);
 #define USE_LINEAR_INTEROP_FOR_TEST 1
 
 static uint16_t failures;
-static __xdata Synthesizer expectedSynth;
+static MEM_XDATA(Synthesizer) expectedSynth;
 
 #define ASSERT_TRUE(name, expr) do { \
 	if (!(expr)) { \
@@ -58,7 +58,7 @@ static void reset_test_synth(void)
 static uint8_t curve_level(uint8_t env, uint8_t velocity_scaled)
 {
 	uint8_t idx = (uint8_t)(((uint16_t)env * velocity_scaled) >> 8);
-	return AdsrCurveTable[idx];
+	return NonlinearMapTable[idx];
 }
 
 static uint8_t high_s8_u8(int8_t a, uint8_t b)
@@ -180,7 +180,7 @@ static void TestNoteOnAllocation(void)
 	printf("TestNoteOnAllocation\n");
 	reset_test_synth();
 
-	NoteOnAsm(60, 127);
+	SynthNoteOn(60, 127);
 	ASSERT_EQ_U8("voice0 note", 60, voiceState[0].midiNote);
 	ASSERT_EQ_U8("voice0 vel", 254, voiceState[0].velocity);
 	ASSERT_EQ_U8("voice0 attack", ENV_STATE_ATTACK, voiceState[0].envelopeState);
@@ -191,13 +191,13 @@ static void TestNoteOnAllocation(void)
 
 	reset_test_synth();
 	for (i = 0; i < POLY_NUM; i++)
-		NoteOnAsm((uint8_t)(60 + i), 100);
+		SynthNoteOn((uint8_t)(60 + i), 100);
 	for (i = 0; i < POLY_NUM; i++) {
 		ASSERT_EQ_U8("fill note", 60 + i, voiceState[i].midiNote);
 		ASSERT_EQ_U8("fill state", ENV_STATE_ATTACK, voiceState[i].envelopeState);
 	}
 
-	NoteOnAsm(90, 127);
+	SynthNoteOn(90, 127);
 	ASSERT_EQ_U8("oldest stolen note", 90, voiceState[0].midiNote);
 	ASSERT_EQ_U8("oldest stolen state", ENV_STATE_ATTACK, voiceState[0].envelopeState);
 }
@@ -207,17 +207,17 @@ static void TestNoteOffRelease(void)
 	printf("TestNoteOffRelease\n");
 	reset_test_synth();
 
-	NoteOnAsm(64, 90);
-	NoteOnAsm(64, 120);
-	NoteOffAsm(64);
+	SynthNoteOn(64, 90);
+	SynthNoteOn(64, 120);
+	SynthNoteOff(64);
 	ASSERT_EQ_U8("release first", ENV_STATE_RELEASE, voiceState[0].envelopeState);
 	ASSERT_EQ_U8("release second", ENV_STATE_RELEASE, voiceState[1].envelopeState);
 	ASSERT_EQ_U8("short note precharge", ADSR_ENV_MAX >> 1, voiceState[0].envelopePhase);
 	ASSERT_EQ_U8("short note precharge 2", ADSR_ENV_MAX >> 1, voiceState[1].envelopePhase);
 
 	reset_test_synth();
-	NoteOnAsm(67, 80);
-	NoteOnAsm(67, 0);
+	SynthNoteOn(67, 80);
+	SynthNoteOn(67, 0);
 	ASSERT_EQ_U8("vel0 noteoff", ENV_STATE_RELEASE, voiceState[0].envelopeState);
 }
 
@@ -227,33 +227,33 @@ static void TestAdsrStateMachine(void)
 	reset_test_synth();
 	AdsrSetRates(64U << 8, 14U << 8, 0, 32U << 8);
 
-	NoteOnAsm(72, 127);
-	GenDecayEnvlopeAsm();
+	SynthNoteOn(72, 127);
+	SynthEnvelopeStep();
 	ASSERT_EQ_U8("attack phase 1", 64, voiceState[0].envelopePhase);
 	ASSERT_EQ_U8("attack state 1", ENV_STATE_ATTACK, voiceState[0].envelopeState);
 	ASSERT_EQ_U8("attack level 1", curve_level(64, 254),
 		synthForAsm.SoundUnitUnionList[0].split.envelopeLevel);
 
-	GenDecayEnvlopeAsm();
+	SynthEnvelopeStep();
 	ASSERT_EQ_U8("attack reaches decay", ADSR_ENV_MAX, voiceState[0].envelopePhase);
 	ASSERT_EQ_U8("decay state", ENV_STATE_DECAY, voiceState[0].envelopeState);
 
-	GenDecayEnvlopeAsm();
+	SynthEnvelopeStep();
 	ASSERT_EQ_U8("decay phase", 114, voiceState[0].envelopePhase);
 	ASSERT_EQ_U8("decay level", curve_level(114, 254),
 		synthForAsm.SoundUnitUnionList[0].split.envelopeLevel);
 
-	GenDecayEnvlopeAsm();
+	SynthEnvelopeStep();
 	ASSERT_EQ_U8("sustain threshold", ADSR_SUSTAIN_THRESHOLD, voiceState[0].envelopePhase);
 	ASSERT_EQ_U8("sustain state", ENV_STATE_SUSTAIN, voiceState[0].envelopeState);
 
-	NoteOffAsm(72);
+	SynthNoteOff(72);
 	ASSERT_EQ_U8("release state", ENV_STATE_RELEASE, voiceState[0].envelopeState);
-	GenDecayEnvlopeAsm();
+	SynthEnvelopeStep();
 	ASSERT_EQ_U8("release phase", 68, voiceState[0].envelopePhase);
-	GenDecayEnvlopeAsm();
-	GenDecayEnvlopeAsm();
-	GenDecayEnvlopeAsm();
+	SynthEnvelopeStep();
+	SynthEnvelopeStep();
+	SynthEnvelopeStep();
 	ASSERT_EQ_U8("release silent", ENV_STATE_SILENT, voiceState[0].envelopeState);
 	ASSERT_EQ_U8("release level zero", 0,
 		synthForAsm.SoundUnitUnionList[0].split.envelopeLevel);

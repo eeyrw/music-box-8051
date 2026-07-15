@@ -16,7 +16,7 @@
 #define CCP_S0 0x10 //P_SW1.4
 #define CCP_S1 0x20 //P_SW1.5
 
-extern __xdata Player mainPlayer;
+extern MEM_XDATA(Player) mainPlayer;
 void ADC_Inilize(void);
 
 /********************* UART1中断函数************************/
@@ -166,7 +166,7 @@ void HardwareInit(void)
 
     // CR = 1; //PCA定时器开始工作
     ADC_Inilize();
-    EA = 1; //允许全局中断
+    Platform_IrqEnableGlobal(); //允许全局中断
 }
 
 void StartAudioOutput(void)
@@ -267,15 +267,14 @@ void IntoPowerDown(void)
     PCON |= 0x01;    // 进入 IDLE 模式 (CPU 休眠, 外设继续运行, ISR 可唤醒)
 }
 
-extern __data uint32_t sysMs;
+extern MEM_FAST_DATA(uint32_t) sysMs;
 
 uint32_t GetSysMs(void)
 {
-    uint32_t val;
-    uint8_t savedEA = EA;
+	uint32_t val;
+	PlatformIrqState irq_state = Platform_IrqSave();
 
-    EA = 0;
-    val = sysMs;
-    EA = savedEA;
-    return val;
+	val = sysMs;
+	Platform_IrqRestore(irq_state);
+	return val;
 }

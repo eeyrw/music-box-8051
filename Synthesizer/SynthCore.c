@@ -5,14 +5,14 @@
 #include "Bsp.h"
 #include "CompressorGenerated.h"
 
-__xdata VoiceState voiceState[POLY_NUM];
+MEM_XDATA(VoiceState) voiceState[POLY_NUM];
 
-__xdata uint16_t AdsrAttackRateFrac;
-__xdata uint16_t AdsrDecayRateFrac;
-__xdata uint16_t AdsrReleaseRateFrac;
-__xdata uint16_t AdsrSustainDecayRateFrac;
+MEM_XDATA(uint16_t) AdsrAttackRateFrac;
+MEM_XDATA(uint16_t) AdsrDecayRateFrac;
+MEM_XDATA(uint16_t) AdsrReleaseRateFrac;
+MEM_XDATA(uint16_t) AdsrSustainDecayRateFrac;
 /* Tracks non-silent voices so ADSR ticks skip inactive XRAM state reads. */
-static __xdata uint8_t activeVoiceMask;
+static MEM_XDATA(uint8_t) activeVoiceMask;
 
 /* 8x8 high-byte multiply helper; avoids SDCC's 16-bit __mulint call here. */
 extern uint8_t MulU8High(uint8_t a, uint8_t b);
@@ -44,50 +44,6 @@ void AdsrSetRates(uint16_t attack, uint16_t decay, uint16_t sustainDecay, uint16
 	AdsrSustainDecayRateFrac = sustainDecay;
 	AdsrReleaseRateFrac = release;
 }
-
-#if VELOCITY_CURVE == VEL_CURVE_POWER2
-const __code uint8_t AdsrCurveTable[128] = {  /* level = (x/127)^2 * 255 */
-      0,   0,   0,   0,   0,   0,   0,   0,   1,   1,   1,   1,
-      2,   2,   3,   3,   4,   4,   5,   5,   6,   6,   7,   8,
-      9,   9,  10,  11,  12,  13,  14,  15,  16,  17,  18,  19,
-     20,  21,  22,  24,  25,  26,  27,  29,  30,  32,  33,  34,
-     36,  37,  39,  41,  42,  44,  46,  47,  49,  51,  53,  55,
-     56,  58,  60,  62,  64,  66,  68,  70,  73,  75,  77,  79,
-     81,  84,  86,  88,  91,  93,  96,  98, 101, 103, 106, 108,
-    111, 114, 116, 119, 122, 125, 128, 130, 133, 136, 139, 142,
-    145, 148, 151, 154, 158, 161, 164, 167, 171, 174, 177, 181,
-    184, 187, 191, 194, 198, 201, 205, 209, 212, 216, 220, 223,
-    227, 231, 235, 239, 243, 247, 251, 255
-};
-#elif VELOCITY_CURVE == VEL_CURVE_POWER06
-const __code uint8_t AdsrCurveTable[128] = {  /* level = (x/127)^0.6 * 255 */
-      0,  13,  21,  26,  32,  36,  40,  44,  48,  52,  55,  58,
-     61,  64,  67,  70,  73,  76,  78,  81,  84,  86,  89,  91,
-     93,  96,  98, 100, 102, 105, 107, 109, 111, 113, 115, 117,
-    119, 121, 123, 125, 127, 129, 131, 133, 134, 136, 138, 140,
-    142, 144, 145, 147, 149, 150, 152, 154, 156, 157, 159, 160,
-    162, 164, 165, 167, 169, 170, 172, 173, 175, 176, 178, 179,
-    181, 182, 184, 185, 187, 188, 190, 191, 193, 194, 196, 197,
-    198, 200, 201, 203, 204, 206, 207, 208, 210, 211, 212, 214,
-    215, 216, 218, 219, 220, 222, 223, 224, 226, 227, 228, 230,
-    231, 232, 233, 235, 236, 237, 239, 240, 241, 242, 243, 245,
-    246, 247, 248, 250, 251, 252, 253, 255
-};
-#else
-const __code uint8_t AdsrCurveTable[128] = {  /* level = 10^((x/127-1)*1.0) * 255  (-20dB) */
-      0,  26,  26,  26,  27,  27,  28,  28,  29,  29,  30,  31,
-     31,  32,  32,  33,  33,  34,  35,  35,  36,  37,  37,  38,
-     39,  39,  40,  41,  42,  42,  43,  44,  45,  46,  46,  47,
-     48,  49,  50,  51,  52,  53,  54,  55,  56,  57,  58,  59,
-     60,  61,  62,  63,  64,  65,  67,  68,  69,  70,  72,  73,
-     74,  76,  77,  78,  80,  81,  83,  84,  86,  87,  89,  91,
-     92,  94,  96,  98,  99, 101, 103, 105, 107, 109, 111, 113,
-    115, 117, 119, 121, 123, 126, 128, 130, 133, 135, 138, 140,
-    143, 145, 148, 151, 153, 156, 159, 162, 165, 168, 171, 174,
-    177, 181, 184, 187, 191, 194, 198, 201, 205, 209, 213, 217,
-    221, 225, 229, 233, 237, 242, 246, 255
-};
-#endif
 
 #ifdef RUN_TEST
 Synthesizer synthForC;
@@ -136,12 +92,11 @@ static uint32_t nextCompressorTickMs;
 static uint8_t compressorLevelFromMix(void)
 {
 	uint16_t mag;
-	uint8_t savedEA = EA;
+	PlatformIrqState irq_state = Platform_IrqSave();
 
-	EA = 0;
 	mag = synthForAsm.compressorPeak;
 	synthForAsm.compressorPeak = 0;
-	EA = savedEA;
+	Platform_IrqRestore(irq_state);
 
 	mag >>= SYNTH_COMPRESSOR_ENV_SHIFT;
 	return mag > 255 ? 255 : (uint8_t)mag;
@@ -176,7 +131,7 @@ static void SynthCompressorTick(void)
 	synthForAsm.compressorGain = SynthCompressorGainTable[env];
 }
 
-void SynthEnvelopeTick(void)
+static void SynthControlTick(void)
 {
 	uint32_t now = GetSysMs();
 	while ((int32_t)(now - nextCompressorTickMs) >= 0)
@@ -187,25 +142,38 @@ void SynthEnvelopeTick(void)
 
 	while ((int32_t)(now - nextTickMs) >= 0)
 	{
-		GenDecayEnvlopeAsm();
+		SynthEnvelopeStep();
 		nextTickMs += ADSR_TICK_MS;
 	}
 }
 
+static void SynthVisualize(void)
+{
+	uint16_t level = (uint16_t)synthForAsm.compressorEnv << 1;
+	PWMA_CCR4H = (uint8_t)(level >> 8);
+	PWMA_CCR4L = (uint8_t)level;
+}
+
+void SynthProcess(void)
+{
+	SynthControlTick();
+	SynthVisualize();
+}
+
 void SynthEnvReset(void)
 {
-	uint8_t savedEA = EA;
+	PlatformIrqState irq_state;
 
 	nextTickMs = GetSysMs();
 	nextCompressorTickMs = nextTickMs;
 	synthForAsm.compressorEnv = 0;
 	synthForAsm.compressorGain = SynthCompressorGainTable[0];
-	EA = 0;
+	irq_state = Platform_IrqSave();
 	synthForAsm.compressorPeak = 0;
-	EA = savedEA;
+	Platform_IrqRestore(irq_state);
 }
 
-void SynthReleaseAllAsm(void)
+void SynthReleaseAll(void)
 {
 	uint8_t i;
 	for (i = 0; i < POLY_NUM; i++)
@@ -339,7 +307,7 @@ static uint8_t stealVoice(void)
 }
 #endif
 
-void NoteOnAsm(uint8_t note, uint8_t velocity)
+void SynthNoteOn(uint8_t note, uint8_t velocity)
 {
 	uint8_t idx;
 	uint8_t vel_scaled;
@@ -347,7 +315,7 @@ void NoteOnAsm(uint8_t note, uint8_t velocity)
 
 	if (velocity == 0)
 	{
-		NoteOffAsm(note);
+		SynthNoteOff(note);
 		return;
 	}
 	if (velocity > 127)
@@ -381,7 +349,7 @@ void NoteOnAsm(uint8_t note, uint8_t velocity)
 	activeVoiceMask |= (uint8_t)(1U << idx);
 }
 
-void NoteOffAsm(uint8_t note)
+void SynthNoteOff(uint8_t note)
 {
 	uint8_t i;
 	for (i = 0; i < POLY_NUM; i++)
@@ -397,11 +365,11 @@ void NoteOffAsm(uint8_t note)
 	}
 }
 
-void GenDecayEnvlopeAsm(void)
+void SynthEnvelopeStep(void)
 {
 	uint8_t i;
-	VoiceState __xdata *voice = voiceState;
-	SoundUnitUnion __data *unit = synthForAsm.SoundUnitUnionList;
+	MEM_XDATA(VoiceState) *voice = voiceState;
+	MEM_FAST_DATA(SoundUnitUnion) *unit = synthForAsm.SoundUnitUnionList;
 	uint8_t activeMask = activeVoiceMask;
 	uint8_t voiceBit = 1;
 	uint16_t sustainDecayRate;
@@ -536,7 +504,7 @@ void GenDecayEnvlopeAsm(void)
 		{
 			/* Phase unchanged means curve index unchanged, so keep the old envelopeLevel. */
 			uint8_t curve_idx = MulU8High(newEnv, vel);
-			unit->split.envelopeLevel = AdsrCurveTable[curve_idx];
+			unit->split.envelopeLevel = NonlinearMapTable[curve_idx];
 		}
 	}
 	activeVoiceMask = activeMask;

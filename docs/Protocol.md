@@ -179,7 +179,7 @@ Voice 0 位于 data[0..12]，Voice 1 位于 data[13..25]，以此类推。
 
 - 负载: 1 字节 MIDI 音符编号 (0–127), 可选第 2 字节 velocity (0–127, 默认 127)
 - 应答: 状态码
-- 行为: 调用 `NoteOnAsm(note, vel)`，分配空闲声道并进入 ADSR ATTACK 阶段 (env 从 0 渐起)。velocity 使用 MIDI 范围 0-127；0 按 NoteOff 处理，>127 饱和为 127。内部使用 `vel_scaled = vel × 2`，再由 `(env × vel_scaled) >> 8` 得到非线性曲线表索引。
+- 行为: 调用 `SynthNoteOn(note, vel)`，分配空闲声道并进入 ADSR ATTACK 阶段 (env 从 0 渐起)。velocity 使用 MIDI 范围 0-127；0 按 NoteOff 处理，>127 饱和为 127。内部使用 `vel_scaled = vel × 2`，再由 `(env × vel_scaled) >> 8` 得到 `NonlinearMapTable` 索引。
 
 ---
 
@@ -187,7 +187,7 @@ Voice 0 位于 data[0..12]，Voice 1 位于 data[13..25]，以此类推。
 
 - 负载: 1 字节 — MIDI 音符编号 (0–127)
 - 应答: 状态码
-- 行为: 调用 `NoteOffAsm(note)`，扫描所有声道匹配 `midiNote`，将 `envelopeState` 置 RELEASE 触发线性衰减。释放所有匹配声道（处理同音复触）。
+- 行为: 调用 `SynthNoteOff(note)`，扫描所有声道匹配 `midiNote`，将 `envelopeState` 置 RELEASE 触发线性衰减。释放所有匹配声道（处理同音复触）。
 
 ---
 
@@ -321,7 +321,7 @@ duration_ms = ceil(distance / (raw / 256)) * ADSR_TICK_MS
 
 由于状态切换时会把 `envelopeFrac` 清零，下一阶段不会继承上一阶段的小数残留。Release 在 NoteOff 时也清零 `envelopeFrac`，从当前 `envelopePhase` 开始线性下降。
 
-所有 `*_RATE_FRAC` 值为 `__xdata uint16_t` 运行时变量，由 `AdsrInit()` 在 `main()` 启动时根据 MS 时长宏初始化，也可由 `CMD_ADSR_SET` 临时覆盖。
+所有 `*_RATE_FRAC` 值为 `MEM_XDATA(uint16_t)` 运行时变量，由 `AdsrInit()` 在 `main()` 启动时根据 MS 时长宏初始化，也可由 `CMD_ADSR_SET` 临时覆盖。
 
 ---
 
@@ -330,7 +330,7 @@ duration_ms = ceil(distance / (raw / 256)) * ADSR_TICK_MS
 - 负载: 11 字节 (格式同 ADSR_GET)
 - 应答: STATUS_OK / STATUS_BAD_LEN / STATUS_INVALID_PARAM
 
-`ADSR_ENV_MAX`、`ADSR_TICK_MS`、`ADSR_SUSTAIN_THRESHOLD` 是固件固定参数，SET 时必须与当前固件返回值一致；四个 `*_RATE_FRAC` 字段会写入运行时 `__xdata uint16_t` 变量，立即影响后续包络 tick。参数不会持久化，复位后由 `AdsrInit()` 按 `SynthCore.h` 的毫秒宏重新计算。
+`ADSR_ENV_MAX`、`ADSR_TICK_MS`、`ADSR_SUSTAIN_THRESHOLD` 是固件固定参数，SET 时必须与当前固件返回值一致；四个 `*_RATE_FRAC` 字段会写入运行时 `MEM_XDATA(uint16_t)` 变量，立即影响后续包络 tick。参数不会持久化，复位后由 `AdsrInit()` 按 `SynthCore.h` 的毫秒宏重新计算。
 
 取值约束：Attack 必须 `>= 0x0100`，确保首个 envelope tick 至少推进 1 个 env 单位；Decay 和 Release 必须非 0；Sustain decay 可为 0，表示 sustain 阶段不自动衰减。所有非零 rate 必须 `<= 0xFF00`，保证 `envelopeFrac + rate` 不发生 16-bit 溢出，且每 tick 的进位不超过 255。
 

@@ -2,8 +2,9 @@
 #define __PERIOD_TIMER_H__
 
 #include <stdint.h>
+#include "Platform.h"
 
-extern __data uint32_t sysMs;
-extern __data uint8_t sysMsPre;
+extern MEM_FAST_DATA(uint32_t) sysMs;
+extern MEM_FAST_DATA(uint8_t) sysMsPre;
 
 #endif

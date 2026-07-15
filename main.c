@@ -7,15 +7,7 @@
 #include "Storage.h"
 
 extern void TestProcess(void);
-__xdata Player mainPlayer;
-
-void VisualizeSound(void)
-{
-	uint16_t t;
-	t = (uint16_t)synthForAsm.compressorEnv << 1;
-	PWMA_CCR4H = (t >> 8) & 0xff;
-	PWMA_CCR4L = t & 0xff;
-}
+MEM_XDATA(Player) mainPlayer;
 
 void main()
 {
@@ -37,8 +29,8 @@ void main()
 
 	while (1)
 	{
+		SynthProcess();
 		PlayerProcess(&mainPlayer);
-		VisualizeSound();
 		Proto_Process();
 	}
 }

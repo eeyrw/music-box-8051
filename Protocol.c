@@ -11,24 +11,24 @@
 #define PKT_BUF_SIZE 260
 #define TX_BUF_SIZE  264
 
-static __xdata uint8_t  rx_ring[RX_BUF_SIZE];
+static MEM_XDATA(uint8_t)  rx_ring[RX_BUF_SIZE];
 static volatile uint8_t  rx_wr;
 static volatile uint8_t  rx_rd;
 
-static __xdata uint8_t  pkt_data[PKT_BUF_SIZE];
+static MEM_XDATA(uint8_t)  pkt_data[PKT_BUF_SIZE];
 static uint8_t           pkt_len;
 static uint8_t           pkt_pos;
 static uint8_t           pkt_state;
 static uint8_t           pkt_csum;
 static uint8_t           pkt_cmd;
 
-static __xdata uint8_t  tx_buf[TX_BUF_SIZE];
+static MEM_XDATA(uint8_t)  tx_buf[TX_BUF_SIZE];
 static volatile uint8_t  tx_len;
 static volatile uint8_t  tx_pos;
 static volatile uint8_t  tx_state;
 
 
-extern __xdata Player mainPlayer;
+extern MEM_XDATA(Player) mainPlayer;
 
 static uint8_t calc_csum(uint8_t start, uint8_t count)
 {
@@ -309,7 +309,7 @@ static void dispatch_command(void)
 	case CMD_GET_INFO:
 	{
 		uint8_t buf[4];
-		Player __xdata *p = &mainPlayer;
+		MEM_XDATA(Player) *p = &mainPlayer;
 		buf[0] = FW_VERSION_MAJOR;
 		buf[1] = FW_VERSION_MINOR;
 		buf[2] = storage_get_backend();
@@ -407,7 +407,7 @@ static void dispatch_command(void)
 
 	case CMD_SYS_INFO:
 	{
-		Player __xdata *p = &mainPlayer;
+		MEM_XDATA(Player) *p = &mainPlayer;
 		uint32_t ms = GetSysMs();
 		uint8_t i, active = 0;
 		uint8_t buf[14];
@@ -449,7 +449,7 @@ static void dispatch_command(void)
 			break;
 		}
 		vel = (pkt_len >= 2) ? pkt_data[1] : 127;
-		NoteOnAsm(pkt_data[0], vel);
+		SynthNoteOn(pkt_data[0], vel);
 		send_response_ok(CMD_NOTE_ON);
 		break;
 	}
@@ -461,7 +461,7 @@ static void dispatch_command(void)
 			send_response_err(CMD_NOTE_OFF, STATUS_BAD_LEN);
 			break;
 		}
-		NoteOffAsm(pkt_data[0]);
+		SynthNoteOff(pkt_data[0]);
 		send_response_ok(CMD_NOTE_OFF);
 		break;
 	}
@@ -470,14 +470,14 @@ static void dispatch_command(void)
 	{
 		if (pkt_len < 1) break;
 		uint8_t vel = (pkt_len >= 2) ? pkt_data[1] : 127;
-		NoteOnAsm(pkt_data[0], vel);
+		SynthNoteOn(pkt_data[0], vel);
 		break;
 	}
 
 	case CMD_FAST_NOTE_OFF:
 	{
 		if (pkt_len < 1) break;
-		NoteOffAsm(pkt_data[0]);
+		SynthNoteOff(pkt_data[0]);
 		break;
 	}
 
@@ -513,7 +513,7 @@ static void dispatch_command(void)
 
 	case CMD_GET_STATUS:
 	{
-		Player __xdata *p = &mainPlayer;
+		MEM_XDATA(Player) *p = &mainPlayer;
 		uint8_t buf[3];
 		buf[0] = (uint8_t)p->scheduler.currentScoreIndex;
 		buf[1] = (uint8_t)p->scheduler.maxScoreNum;

@@ -280,8 +280,8 @@ Timer0 ISR (Synthesizer/PeriodTimer.s, bank 1)
 Main loop:
 ```c
 while (1) {
+    SynthProcess();             // ADSR/compressor tick + visualization PWM
     PlayerProcess(&mainPlayer);   // SSCR 解码 + 调度器
-    VisualizeSound();             // compressorEnv << 1 → PWMA_CCR4
     Proto_Process();              // 串口协议处理
 }
 ```
@@ -289,9 +289,9 @@ while (1) {
 ### Timing
 
 - Timer0 ISR: 32000 Hz, 每 32 个 tick (1ms) 递增 `sysMs` (32-bit)
-- Player 使用 `GetSysMs()` 驱动乐谱事件调度和包络衰减
+- Player 使用 `GetSysMs()` 驱动乐谱事件调度；SynthProcess 使用 `GetSysMs()` 驱动包络、压缩器和可视化更新
 - 乐谱 delta (raw tick) × 8 = 毫秒 (TickPerSecond=125, 1000/125=8ms/tick)
-- **包络 tick**: 每 `ADSR_TICK_MS` (5ms) 调用 `GenDecayEnvlopeAsm`, 使用 `nextTickMs` 相位锁定累加器 (不受主循环忙闲漂移影响)
+- **包络 tick**: 每 `ADSR_TICK_MS` (5ms) 由 `SynthProcess()` 调用 `SynthEnvelopeStep()`, 使用 `nextTickMs` 相位锁定累加器 (不受主循环忙闲漂移影响)
 - ADSR 默认阶段时长由 `SynthCore.h` 宏 (`ADSR_ATTACK_MS=20`, `ADSR_DECAY_MS=200`, `ADSR_SUSTAIN_DECAY_MS=0`, `ADSR_RELEASE_MS=200`) 初始化；串口 `ADSR_SET` 可运行时写入 8.8 定点速率，复位后恢复宏默认值
 
 ### Fixed memory layout (critical — do not change blindly)
@@ -329,24 +329,24 @@ After all voices: raw `mixOut` is written for diagnostics/visualization state, t
 | RELEASE | current→0 (default −3.203/tick) | CurveTable[idx] | NoteOff |
 | SILENT | — | 0 | RELEASE end / SynthReleaseAll |
 
-**ADSR 管线**: `env(0-128) × vel_scaled(MIDI_vel×2, 0-254) >> 8 → idx(0-127) → AdsrCurveTable[idx] → envelopeLevel(0-255)`
+**ADSR 管线**: `env(0-128) × vel_scaled(MIDI_vel×2, 0-254) >> 8 → idx(0-127) → NonlinearMapTable[idx] → envelopeLevel(0-255)`
 
 **Release 为线性衰减** (env -= ADSR_RELEASE_RATE)，不再使用 EnvelopeTable。
 
-**GenDecayEnvlopeAsm** / **NoteOnAsm** / **NoteOffAsm** / **SynthReleaseAllAsm** 实现在 `SynthCore.c` (C 版)。`GenDecayEnvlopeAsm` 每 `ADSR_TICK_MS` (5ms) 推进 8 个声道的 ADSR 状态机，使用相位锁定 `nextTickMs` 累加器（while 循环追赶），不受主循环忙闲漂移影响。
+**SynthEnvelopeStep** / **SynthNoteOn** / **SynthNoteOff** / **SynthReleaseAll** 实现在 `SynthCore.c` (C 版)。`SynthProcess()` 每 `ADSR_TICK_MS` (5ms) 调用 `SynthEnvelopeStep()` 推进 8 个声道的 ADSR 状态机，使用相位锁定 `nextTickMs` 累加器（while 循环追赶），不受主循环忙闲漂移影响。
 
-**NoteOffAsm**: 扫描 8 个声道匹配 `midiNote`（跳过 `envelopeState == SILENT`），将所有匹配声道设为 RELEASE。若 `envelopePhase == 0`（NoteOn 后首个 tick 前到达），预充 `ADSR_ENV_MAX / 2` (64) 再衰减，防止短音符无声。
+**SynthNoteOff**: 扫描 8 个声道匹配 `midiNote`（跳过 `envelopeState == SILENT`），将所有匹配声道设为 RELEASE。若 `envelopePhase == 0`（NoteOn 后首个 tick 前到达），预充 `ADSR_ENV_MAX / 2` (64) 再衰减，防止短音符无声。
 
-**SynthReleaseAllAsm**: 所有 8 声道 `envelopeLevel = 0, envelopeState = SILENT`。在 Stop/Next/Prev/EndOfScore 时调用。
+**SynthReleaseAll**: 所有 8 声道 `envelopeLevel = 0, envelopeState = SILENT`。在 Stop/Next/Prev/EndOfScore 时调用。
 
 **ADSR constants** (`SynthCore.h`):
-- `ADSR_TICK_MS=5` (tick 间隔 ms, 控制 `Player.c` 相位锁定环)
+- `ADSR_TICK_MS=5` (tick 间隔 ms, 控制 `SynthProcess()` 相位锁定环)
 - `ADSR_ENV_MAX=128` (内部 env 范围)
 - `ADSR_ATTACK_MS=20, ADSR_DECAY_MS=200, ADSR_SUSTAIN_DECAY_MS=0, ADSR_RELEASE_MS=200` (默认阶段时长)
-- Step 值从时长推导为 8.8 定点 `*_RATE_FRAC`，存储为 `__xdata uint16_t` 运行时变量（由 `AdsrInit()` 在 `main()` 启动时初始化，也可通过串口 `ADSR_SET` 临时修改），`envelopeFrac` 每 tick 累加，进位驱动 envelopePhase 增减
+- Step 值从时长推导为 8.8 定点 `*_RATE_FRAC`，存储为 `MEM_XDATA(uint16_t)` 运行时变量（由 `AdsrInit()` 在 `main()` 启动时初始化，也可通过串口 `ADSR_SET` 临时修改），`envelopeFrac` 每 tick 累加，进位驱动 envelopePhase 增减
 - `ADSR_SUSTAIN_THRESHOLD=110` (decay 目标, 86% of max)
 - `ADSR_SUSTAIN_DECAY_MS` (Sustain 衰减时长 ms, 0=平坦; 默认 0)
-- Non-linear curve: 三种曲线可选 via `VELOCITY_CURVE` 宏 (默认: -20dB log 表, 128 条)
+- Non-linear map: 三种曲线可选 via `NONLINEAR_MAP_CURVE` 宏 (默认: -20dB log 表, 128 条)，定义在 `NonlinearMapTable.{c,h}`
 
 **VoiceState struct** (XRAM, 6 bytes/voice × 8 = 48 bytes):
 ```c
@@ -440,7 +440,7 @@ Offset | Size | Field
 SSCR event byte → sscr_dispatch_event()
   → decode note (direct or extended)
   → apply totalTranspose inverse
-  → NoteOnAsm(MIDI_note) [or NoteOffAsm(MIDI_note) for NoteOff]
+  → SynthNoteOn(MIDI_note) [or SynthNoteOff(MIDI_note) for NoteOff]
 ```
 
 Velocity is used by ADSR pipeline: `vel × 2` → velocity field for `(env × vel) >> 8` feeding the non-linear curve table.
@@ -463,17 +463,17 @@ State machine: `READY_TO_SWITCH` → `SWITCHING` → `SCORE_PREV/NEXT` → `READ
 
 ### Note assignment
 
-**Free-voice-first + Timestamp FIFO steal** across 8 voices. `NoteOnAsm` (`SynthCore.c`):
+**Free-voice-first + Timestamp FIFO steal** across 8 voices. `SynthNoteOn` (`SynthCore.c`):
 
 1. Phase A: scan all 8 voices for `voiceState[].envelopeState == SILENT` (XRAM) — reuse immediately
 2. Phase B: if none free, call `stealVoice()` — strategy selected by `NOTEON_STEAL_STRATEGY` macro (default: steal oldest `allocStamp`)
 3. `voiceState[idx].allocStamp = ++alloc_stamp`
 
-`NoteOnAsm()` writes the selected voice's 8-bit `envelopeLevel = 0` before updating multi-byte `increment` and `wavetablePos` fields. The ISR checks `envelopeLevel` first and skips zero-envelope voices, so it cannot use a half-updated voice; no broad `EA=0` critical section is needed for NoteOn voice writes. The free-voice scan uses `envelopeState == SILENT` and runs outside a critical section since `envelopeState` is only set to SILENT in main-loop context (`GenDecayEnvlopeAsm` / `SynthReleaseAllAsm`), not in ISR.
+`SynthNoteOn()` writes the selected voice's 8-bit `envelopeLevel = 0` before updating multi-byte `increment` and `wavetablePos` fields. The ISR checks `envelopeLevel` first and skips zero-envelope voices, so it cannot use a half-updated voice; no broad interrupt-off critical section is needed for NoteOn voice writes. The free-voice scan uses `envelopeState == SILENT` and runs outside a critical section since `envelopeState` is only set to SILENT in main-loop context (`SynthEnvelopeStep` / `SynthReleaseAll`), not in ISR.
 
 **Why not "steal the quietest"?** Comparing `envelopeLevel` can systematically favor or penalize notes based on envelope timing rather than musical age. Timestamp FIFO is pitch-independent and guarantees the oldest-playing note is stolen.
 
-**Why not `envelopeLevel == 0` for free scan?** `NoteOnAsm` sets `envelopeLevel=0` for ATTACK start. If a second NoteOn in the same processing cycle (delta=0 between events) scans with `envelopeLevel == 0`, it would steal the freshly-allocated voice. Using `envelopeState == SILENT` prevents this — an ATTACK voice has `state=ATTACK` even though `level=0`.
+**Why not `envelopeLevel == 0` for free scan?** `SynthNoteOn` sets `envelopeLevel=0` for ATTACK start. If a second NoteOn in the same processing cycle (delta=0 between events) scans with `envelopeLevel == 0`, it would steal the freshly-allocated voice. Using `envelopeState == SILENT` prevents this — an ATTACK voice has `state=ATTACK` even though `level=0`.
 
 ## Serial Protocol
 
@@ -564,8 +564,9 @@ Source code is organized into three modules:
 ├── Player/                 Score decoder + multi-song scheduler
 │   └── Player.{c,h}        (SSPL container, SSCR decoder, PlayScheduler)
 ├── Synthesizer/            Audio synthesis engine (wave + envelope + ISR)
-│   ├── SynthCore.{h,c}     Synthesizer/SoundUnit struct definitions + C init + NoteOn/Off/Decay/ReleaseAll
-│   ├── SynthCoreAsm.s      _synthForAsm data segment (0x21) + _SynthReleaseAllAsm (legacy)
+│   ├── SynthCore.{h,c}     Synthesizer/SoundUnit structs + process + note/envelope control
+│   ├── NonlinearMapTable.{h,c} Linear-to-nonlinear response table
+│   ├── SynthCoreAsm.s      _synthForAsm data segment (0x21)
 │   ├── SynthCore.inc       Struct offsets, POLY_NUM, unitSz, constants
 │   ├── Synth.inc           _SynthAsm — 8-voice ISR hot path (optional dithering)
 │   ├── PeriodTimer.s       Timer0 ISR entry (bank 1, includes Synth+UpdateTick)
@@ -588,9 +589,9 @@ Include paths: `-IPlayer -ISynthesizer` (C and ASM). Both directories are always
 - **Compressor gain apply**: post-mix raw `mixOut` is multiplied by the main-loop-prepared 8-bit Q8 compressor gain before final clipping. The positive/negative paths are currently expanded inline; a shared subroutine would save code size but add ISR stack traffic.
 - **Phase increment**: reads `pIncrement_frac/int` fresh from DATA each iteration even when increment is unchanged. Loading once per voice is already minimal since registers are scarce.
 
-### Note: NoteOnAsm / NoteOffAsm / GenDecayEnvlopeAsm / SynthReleaseAllAsm
+### Note: SynthNoteOn / SynthNoteOff / SynthEnvelopeStep / SynthReleaseAll
 
-已从汇编迁至 C (`SynthCore.c`)。`SynthAsm` (ISR 热路径) 保留汇编。`SynthCoreAsm.s` 现仅含 `_synthForAsm` 数据定址 (0x21)。
+这些控制路径已从汇编迁至 C (`SynthCore.c`)。`SynthAsm` (ISR 热路径) 保留汇编。`SynthCoreAsm.s` 现仅含 `_synthForAsm` 数据定址 (0x21)。
 
 ### UpdateTick.inc
 

@@ -21,7 +21,7 @@
 #define CMD_CHIP_ERASE    0xC7
 #define CMD_JEDEC_ID      0x9F
 
-static __xdata uint8_t  spi_cache[CACHE_SIZE];
+static MEM_XDATA(uint8_t)  spi_cache[CACHE_SIZE];
 static uint32_t          spi_cache_base  = 0xFFFFFFFFUL;
 static uint8_t           spi_cache_valid = 0;
 

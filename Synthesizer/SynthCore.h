@@ -2,6 +2,8 @@
 #define __SYNTH_CORE_H__
 
 #include <stdint.h>
+#include "Platform.h"
+#include "NonlinearMapTable.h"
 
 #define POLY_NUM 8
 #define USE_DITHERING 0
@@ -9,7 +11,7 @@
 // ================================================================
 // ADSR 包络默认参数 — 修改下面四个时长即可
 //   实际时长 ≈ ceil(幅度/步进) × ADSR_TICK_MS
-//   ADSR_TICK_MS 在 Player.c 中控制 GenDecayEnvlopeAsm 调用频率
+//   ADSR_TICK_MS 在 SynthProcess() 中控制 SynthEnvelopeStep 调用频率
 //   ADSR_*_MS 用于启动时初始化 8.8 定点速率；串口 ADSR_SET 可临时覆盖
 // ================================================================
 
@@ -33,10 +35,10 @@
 #define ADSR_RATE_MIN_PROGRESS ADSR_FRAC_DEN
 #define ADSR_RATE_MAX          0xFF00U
 
-extern __xdata uint16_t AdsrAttackRateFrac;
-extern __xdata uint16_t AdsrDecayRateFrac;
-extern __xdata uint16_t AdsrReleaseRateFrac;
-extern __xdata uint16_t AdsrSustainDecayRateFrac;
+extern MEM_XDATA(uint16_t) AdsrAttackRateFrac;
+extern MEM_XDATA(uint16_t) AdsrDecayRateFrac;
+extern MEM_XDATA(uint16_t) AdsrReleaseRateFrac;
+extern MEM_XDATA(uint16_t) AdsrSustainDecayRateFrac;
 
 void AdsrInit(void);
 void AdsrSetRates(uint16_t attack, uint16_t decay, uint16_t sustainDecay, uint16_t release);
@@ -56,15 +58,6 @@ void AdsrSetRates(uint16_t attack, uint16_t decay, uint16_t sustainDecay, uint16
 #define VOICE_STEAL_LOWEST_NOTE  4   // MIDI note: steal lowest pitch
 
 #define NOTEON_STEAL_STRATEGY VOICE_STEAL_OLDEST
-
-// ---- 力度曲线选择 ----
-#define VEL_CURVE_POWER2  0
-#define VEL_CURVE_POWER06 1
-#define VEL_CURVE_DB20    2
-
-#define VELOCITY_CURVE VEL_CURVE_DB20
-
-extern const __code uint8_t AdsrCurveTable[128];
 
 typedef struct _SoundUnit
 {
@@ -115,27 +108,27 @@ typedef struct _VoiceState
 	uint8_t allocStamp;
 } VoiceState;
 
-extern __xdata VoiceState voiceState[POLY_NUM];
+extern MEM_XDATA(VoiceState) voiceState[POLY_NUM];
 
 extern void SynthInit(Synthesizer *synth);
 extern void SynthDitherInit(Synthesizer *synth, uint16_t seed);
-extern void SynthEnvelopeTick(void);
+extern void SynthProcess(void);
 extern void SynthEnvReset(void);
 
 #ifdef RUN_TEST
 extern void SynthCoreTestReset(void);
 #endif
 
-extern void NoteOnAsm(uint8_t note, uint8_t velocity);
-extern void NoteOffAsm(uint8_t note);
-extern void GenDecayEnvlopeAsm(void);
-extern void SynthReleaseAllAsm(void);
+extern void SynthNoteOn(uint8_t note, uint8_t velocity);
+extern void SynthNoteOff(uint8_t note);
+extern void SynthEnvelopeStep(void);
+extern void SynthReleaseAll(void);
 extern void SynthAsm(void);
 
 #ifdef RUN_TEST
 extern Synthesizer synthForC;
 #endif
 
-extern __data Synthesizer synthForAsm;
+extern MEM_FAST_DATA(Synthesizer) synthForAsm;
 
 #endif

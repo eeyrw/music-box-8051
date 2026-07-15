@@ -4,14 +4,14 @@
 #include <stdint.h>
 #include "RegisterDefine.h"
 
-typedef uint8_t PlatformIrqState;
+typedef __bit PlatformIrqState;
 
 #define MEM_XDATA(type)     type __xdata
 #define MEM_CODE(type)      type __code
 #define MEM_FAST_DATA(type) type __data
 
 #define Platform_IrqSave() \
-	((PlatformIrqState)(EA ? (EA = 0, 1) : 0))
+	(EA ? (EA = 0, 1) : 0)
 
 #define Platform_IrqRestore(state) \
 	do { EA = (state); } while (0)
